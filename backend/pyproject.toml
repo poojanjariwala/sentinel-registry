@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel-registry"
+version = "0.1.0"
+description = "Module 1 - Centralised CCTV Registry & GIS Mapping (Gujarat Police Innovation Challenge 2026)"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13",
+    "psycopg[binary,pool]>=3.2",
+    "geoalchemy2>=0.15",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "email-validator>=2.1",
+    "python-jose[cryptography]>=3.3",
+    "bcrypt>=4.1",
+    "python-multipart>=0.0.9",
+    "openpyxl>=3.1",
+    "h3>=4.1",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "httpx>=0.27",
+]
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

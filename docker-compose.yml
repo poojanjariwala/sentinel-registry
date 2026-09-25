@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel_registry
+    ports:
+      - "15433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel_registry"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  api:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://sentinel:sentinel@db:5432/sentinel_registry
+    ports:
+      - "18000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  mediagen:
+    build: ./infra/mediagen
+    volumes:
+      - hls_media:/hls
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    ports:
+      - "15173:80"
+    volumes:
+      - hls_media:/usr/share/nginx/hls:ro
+    depends_on:
+      - api
+      - mediagen
+
+volumes:
+  pgdata:
+  hls_media:

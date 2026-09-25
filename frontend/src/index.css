@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-canvas text-ink antialiased;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Restrained focus states for keyboard operators */
+:focus-visible {
+  @apply outline-none ring-2 ring-accent/60 ring-offset-1;
+}
+
+.table-base {
+  @apply w-full text-sm border-collapse;
+}
+.table-base thead th {
+  @apply text-left text-2xs font-semibold uppercase tracking-wide text-ink-muted border-b border-line px-3 py-2 bg-white/60;
+}
+.table-base tbody td {
+  @apply border-b border-line/70 px-3 py-2;
+}
+.table-base tbody tr:hover {
+  @apply bg-accent-soft/30;
+}
+
+.badge {
+  @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide border;
+}
+.badge-ok {
+  @apply bg-ok/10 text-ok border-ok/30;
+}
+.badge-warn {
+  @apply bg-warn/10 text-warn border-warn/30;
+}
+.badge-crit {
+  @apply bg-crit/10 text-crit border-crit/30;
+}
+.badge-info {
+  @apply bg-info/10 text-info border-info/30;
+}
+.badge-neutral {
+  @apply bg-ink/5 text-ink-muted border-line;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded border px-3 py-1.5 text-sm font-medium transition-colors duration-150;
+}
+.btn-primary {
+  @apply btn bg-accent text-white border-accent hover:bg-accent/90;
+}
+.btn-ghost {
+  @apply btn border-line bg-white text-ink hover:bg-canvas;
+}
+.btn:disabled {
+  @apply opacity-50 cursor-not-allowed;
+}
+
+.input-base {
+  @apply w-full rounded border border-line bg-white px-2.5 py-1.5 text-sm placeholder:text-ink-faint;
+}
+
+.panel {
+  @apply rounded border border-line bg-white;
+}
