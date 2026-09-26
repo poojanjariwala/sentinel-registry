@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Grid3X3, LayoutGrid, Rows3, Radio, Activity } from 'lucide-react'
+import { Grid3X3, LayoutGrid, Rows3, Radio, Activity, Save, Trash2 } from 'lucide-react'
 import { api } from '../lib/api'
-import { StreamRow, useHlsStream } from '../lib/streams'
+import { StreamRow, WallSummary, createWall, deleteWall, listWalls, useHlsStream } from '../lib/streams'
 import { fmtDateTime } from '../lib/format'
 import { useAuth } from '../lib/auth'
 
@@ -105,6 +105,14 @@ export default function LiveView() {
   const [filters, setFilters] = useState({ q: '', vms_system: '', status: '' })
   const [vmsOptions, setVmsOptions] = useState<string[]>([])
   const [health, setHealth] = useState<{ ONLINE: number; OFFLINE: number; UNKNOWN: number; total: number } | null>(null)
+  // Saved video walls (Module 2): persisted grid layouts.
+  const [walls, setWalls] = useState<WallSummary[]>([])
+  const [wallName, setWallName] = useState('')
+  const [selectedWallId, setSelectedWallId] = useState('')
+
+  useEffect(() => {
+    listWalls().then(setWalls).catch(() => {})
+  }, [])
 
   useEffect(() => {
     const qs = new URLSearchParams()
@@ -137,6 +145,39 @@ export default function LiveView() {
 
   const byId = useMemo(() => new Map(rows.map((r) => [r.stream_id, r])), [rows])
   const focusedRow = focus ? byId.get(focus) ?? null : null
+
+  const saveCurrentWall = () => {
+    const name = wallName.trim()
+    if (!name) return
+    const tiles = slots
+      .map((id, slot) => (id ? { stream_id: id, slot } : null))
+      .filter((t): t is { stream_id: string; slot: number } => t !== null)
+    if (!tiles.length) return
+    createWall(name, tiles)
+      .then((w) => {
+        setWalls((prev) => [w, ...prev.filter((x) => x.wall_id !== w.wall_id)])
+        setSelectedWallId(w.wall_id)
+        setWallName('')
+      })
+      .catch(() => {})
+  }
+
+  const applyWall = (w: WallSummary) => {
+    const next: (string | null)[] = Array(9).fill(null)
+    for (const t of w.tiles) if (t.slot < 9) next[t.slot] = t.stream_id
+    setSlots(next)
+    // Loading a wall is an explicit user action: its tiles start playing.
+    setStartedIds(new Set(w.tiles.map((t) => t.stream_id)))
+  }
+
+  const removeWall = (wallId: string) => {
+    deleteWall(wallId)
+      .then(() => {
+        setWalls((prev) => prev.filter((w) => w.wall_id !== wallId))
+        setSelectedWallId((cur) => (cur === wallId ? '' : cur))
+      })
+      .catch(() => {})
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -217,6 +258,52 @@ export default function LiveView() {
                 <p.icon className="h-3.5 w-3.5" /> {p.label}
               </button>
             ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <input
+              value={wallName}
+              onChange={(e) => setWallName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && saveCurrentWall()}
+              placeholder="Save wall as…"
+              className="input-base w-28"
+            />
+            <button
+              onClick={saveCurrentWall}
+              disabled={!wallName.trim()}
+              className="flex items-center gap-1 rounded border border-line bg-white px-2 py-1.5 text-xs text-ink hover:bg-canvas disabled:opacity-40"
+              title="Save the current tile layout as a named wall"
+            >
+              <Save className="h-3.5 w-3.5" />
+            </button>
+            {walls.length > 0 && (
+              <>
+                <select
+                  value={selectedWallId}
+                  onChange={(e) => {
+                    setSelectedWallId(e.target.value)
+                    const w = walls.find((x) => x.wall_id === e.target.value)
+                    if (w) applyWall(w)
+                  }}
+                  className="input-base w-36"
+                  title="Load a saved wall layout"
+                >
+                  <option value="">Load wall…</option>
+                  {walls.map((w) => (
+                    <option key={w.wall_id} value={w.wall_id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => selectedWallId && removeWall(selectedWallId)}
+                  disabled={!selectedWallId}
+                  className="rounded border border-line bg-white px-2 py-1.5 text-ink-muted hover:bg-canvas disabled:opacity-40"
+                  title="Delete the selected wall"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -12,6 +12,7 @@ import CameraDetail from './pages/CameraDetail'
 import Onboarding from './pages/Onboarding'
 import GapAnalysis from './pages/GapAnalysis'
 import LiveView from './pages/LiveView'
+import Federation from './pages/Federation'
 import VehicleSearch from './pages/VehicleSearch'
 import Admin from './pages/Admin'
 import Audit from './pages/Audit'
@@ -30,6 +31,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/gap" element={<GapAnalysis />} />
           <Route path="/live" element={<LiveView />} />
+          <Route path="/federation" element={<Federation />} />
           <Route path="/vehicles" element={<VehicleSearch />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/audit" element={<Audit />} />

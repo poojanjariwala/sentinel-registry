@@ -29,6 +29,12 @@ export interface WatchInfo {
   label: string
 }
 
+export interface WallSummary {
+  wall_id: string
+  name: string
+  tiles: { stream_id: string; slot: number }[]
+}
+
 export const watch = (streamId: string) =>
   api.post<{ data: WatchInfo }>(`/streams/${streamId}/watch`).then((r) => r.data)
 
@@ -37,6 +43,15 @@ export const heartbeat = (sessionId: string) =>
 
 export const stopWatch = (sessionId: string) =>
   api.post<{ data: { session_id: string } }>(`/streams/sessions/${sessionId}/stop`).then((r) => r.data)
+
+export const listWalls = () =>
+  api.get<{ data: WallSummary[] }>('/streams/walls').then((r) => r.data)
+
+export const createWall = (name: string, tiles: { stream_id: string; slot: number }[]) =>
+  api.post<{ data: WallSummary }>('/streams/walls', { name, tiles }).then((r) => r.data)
+
+export const deleteWall = (wallId: string) =>
+  api.delete<{ data: { wall_id: string } }>(`/streams/walls/${wallId}`).then((r) => r.data)
 
 export function stopOnUnload(sessionId: string | null) {
   if (!sessionId) return
@@ -57,12 +72,23 @@ export function stopOnUnload(sessionId: string | null) {
  * Attach an HLS stream to a video element with bounded auto-reconnect and
  * session heartbeat. Stops the session on unmount.
  *
- * Grid etiquette (ADR-007): the origin enforces a per-account watch-time
- * quota, so retries are capped and gateway refusals (quota/auth) surface as
- * a distinct 'cooldown' state instead of an infinite retry storm.
+ * Reliability model (ADR-007 etiquette + flicker fix):
+ * - exactly ONE watch session per tile; retries reuse the same session
+ *   instead of creating a new one per attempt (no session leaks);
+ * - 403 (invalid/expired viewer session or bad token) = operator action
+ *   required, no auto-retry storm;
+ * - 502 GRID_COOLDOWN (origin watch-time quota) = stop cleanly, no retry;
+ * - 404 = segment rolled off the rolling window: player skips it quietly;
+ * - other fatal network errors = bounded backoff, same session.
  */
 export type StreamState = 'connecting' | 'live' | 'error' | 'cooldown' | 'idle'
 const MAX_RETRY_ATTEMPTS = 6
+
+// Segment-level failures are routine on a rolling window (segments roll off
+// while we fetch); they must never trip the fatal path.
+function isSegmentGap(details: string | undefined): boolean {
+  return !!details && (details.includes('fragment') || details.includes('segment') || details.includes('gapTag'))
+}
 
 export function useHlsStream(streamId: string | null, enabled = true) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -103,12 +129,17 @@ export function useHlsStream(streamId: string | null, enabled = true) {
 
     const begin = async () => {
       try {
-        const info = await watch(streamId)
-        if (disposed) {
-          stopOnUnload(info.session_id)
-          return
+        // One session per tile: reuse it across retries, stop it exactly once.
+        let info = sessionRef.current
+        if (!info) {
+          info = await watch(streamId)
+          if (disposed) {
+            stopOnUnload(info.session_id)
+            return
+          }
+          sessionRef.current = info
+          setSession(info)
         }
-        setSession(info)
         const video = videoRef.current
         if (!video) return
 
@@ -126,12 +157,26 @@ export function useHlsStream(streamId: string | null, enabled = true) {
             })
             hls.on(Hls.Events.ERROR, (_e, data) => {
               if (!data.fatal) return
-              console.warn('[hls] fatal', data.type, data.details)
+              console.warn('[hls] fatal', data.type, data.details, data.response?.code)
               cleanupHls()
               const status = data.response?.code
-              if (status === 502 || status === 403) {
-                // Gateway refused the upstream (grid quota/auth): retrying
-                // cannot help until the cooldown passes - stop cleanly.
+              if (isSegmentGap(data.details) && status === 404) {
+                // rolling-window gap: reload the playlist, keep the session
+                retry = window.setTimeout(() => {
+                  if (!disposed) attach(url)
+                }, 1500)
+                return
+              }
+              if (status === 403) {
+                // Viewer session/token rejected server-side: retrying cannot
+                // help; the operator must start the feed again.
+                setState('error')
+                endSession()
+                return
+              }
+              if (status === 502) {
+                // Gateway refused upstream (grid watch-time quota/auth): the
+                // origin is off-limits until cooldown passes - stop cleanly.
                 setState('cooldown')
                 endSession()
                 return
@@ -155,6 +200,7 @@ export function useHlsStream(streamId: string | null, enabled = true) {
         }
         attach(full)
       } catch {
+        // watch() failed (network/auth) - bounded retry with same session id
         setState('error')
         scheduleRetry()
       }
@@ -164,8 +210,8 @@ export function useHlsStream(streamId: string | null, enabled = true) {
       if (disposed) return
       attempt += 1
       if (attempt > MAX_RETRY_ATTEMPTS) {
-        // Give up - keeps the origin (and the watch-time quota) unharmed.
-        endSession()
+        // Give up WITHOUT killing the session: the operator sees the tile in
+        // the error state and can retry manually without leaking sessions.
         setState('error')
         return
       }
@@ -189,6 +235,7 @@ export function useHlsStream(streamId: string | null, enabled = true) {
       cleanupHls()
       const s = sessionRef.current
       if (s) stopOnUnload(s.session_id)
+      sessionRef.current = null
       setSession(null)
       setState('idle')
     }

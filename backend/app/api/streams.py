@@ -1,20 +1,29 @@
 """Module 2 streams API: unified viewer endpoints."""
 
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.deps import get_current_user, require_perm
 from app.core.errors import SentinelError, request_id_var
-from app.models.module2 import StreamSource, ViewerSession
+from app.models.module2 import StreamSource, VideoWall, ViewerSession
 from app.models.user import User
 from app.services import audit as audit_svc
 from app.services.camera_service import user_department_filter
 from app.services.grid_sync import sync_cameras_from_grid
-from app.services.hls_service import OriginSpec, fetch_key, fetch_playlist, fetch_segment, verify_segment_token
+from app.services.hls_service import (
+    OriginSpec,
+    fetch_key,
+    fetch_playlist,
+    fetch_segment,
+    verify_key_token,
+    verify_segment_token,
+)
 from app.services.sentinel_adapter import seed_simulated_feeds, seed_watchlist, sync_catalogue
 from app.services.stream_service import (
     get_stream_scoped,
@@ -26,6 +35,20 @@ from app.services.stream_service import (
 )
 
 router = APIRouter(prefix="/streams", tags=["streams"])
+
+# One asyncio.Lock per key name: concurrent tile key requests share a single
+# upstream fetch instead of stampeding the origin.
+_key_locks: dict[str, asyncio.Lock] = {}
+
+
+class WallTile(BaseModel):
+    stream_id: str
+    slot: int = Field(ge=0, le=8)
+
+
+class WallCreate(BaseModel):
+    name: str
+    tiles: list[WallTile]
 
 
 @router.get("")
@@ -50,6 +73,95 @@ def health_summary(user: User = Depends(require_perm("camera", "read")), db: Ses
     for r in rows:
         summary[r["status"]] = summary.get(r["status"], 0) + 1
     return {"data": summary, "meta": {}, "requestId": request_id_var.get()}
+
+
+# --- Saved video walls (Module 2: configurable wall layouts) ---------------
+
+
+def _wall_out(w: VideoWall) -> dict:
+    tiles = w.tiles if isinstance(w.tiles, list) else []
+    return {
+        "wall_id": w.wall_id,
+        "name": w.name,
+        "owner_id": w.owner_id,
+        "tiles": tiles,
+        "created_at": w.created_at.isoformat() if w.created_at else None,
+    }
+
+
+@router.get("/walls")
+def list_walls(user: User = Depends(require_perm("camera", "read")), db: Session = Depends(get_db)):
+    walls = db.scalars(select(VideoWall).order_by(VideoWall.created_at.desc())).all()
+    return {"data": [_wall_out(w) for w in walls], "meta": {"total": len(walls)}, "requestId": request_id_var.get()}
+
+
+@router.post("/walls")
+def create_wall(
+    wall: WallCreate,
+    request: Request,
+    user: User = Depends(require_perm("camera", "read")),
+    db: Session = Depends(get_db),
+):
+    name = wall.name.strip()
+    if not name or len(name) > 150:
+        raise SentinelError("WALL_NAME_INVALID", "Wall name must be 1-150 characters", 422)
+    # Keep only references to streams this user may actually view.
+    allowed = {r["stream_id"] for r in list_streams(db, user)}
+    tiles = [
+        {"stream_id": t.stream_id, "slot": max(0, min(8, int(t.slot)))}
+        for t in wall.tiles
+        if t.stream_id in allowed
+    ]
+    if not tiles:
+        raise SentinelError("WALL_TILES_EMPTY", "Wall has no authorized streams", 422)
+    now = datetime.now(timezone.utc)
+    existing = db.scalar(select(VideoWall).where(VideoWall.name == name))
+    if existing:
+        existing.tiles = tiles
+        existing.owner_id = user.user_id
+        existing.updated_at = now
+        db.flush()
+        out = _wall_out(existing)
+    else:
+        w = VideoWall(
+            name=name,
+            owner_id=user.user_id,
+            tiles=tiles,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(w)
+        db.flush()
+        out = _wall_out(w)
+    audit_svc.record(
+        db, "WALL_SAVE", "video_wall", out["wall_id"],
+        after_state={"name": name, "tiles": len(tiles)},
+        actor_user_id=user.user_id, actor_label=user.email,
+        ip_address=request.client.host if request.client else None,
+    )
+    db.commit()
+    return {"data": out, "meta": {}, "requestId": request_id_var.get()}
+
+
+@router.delete("/walls/{wall_id}")
+def delete_wall(
+    wall_id: str,
+    request: Request,
+    user: User = Depends(require_perm("camera", "read")),
+    db: Session = Depends(get_db),
+):
+    w = db.get(VideoWall, wall_id)
+    if not w:
+        raise SentinelError("WALL_NOT_FOUND", "Wall not found", 404)
+    audit_svc.record(
+        db, "WALL_DELETE", "video_wall", wall_id,
+        before_state={"name": w.name},
+        actor_user_id=user.user_id, actor_label=user.email,
+        ip_address=request.client.host if request.client else None,
+    )
+    db.delete(w)
+    db.commit()
+    return {"data": {"wall_id": wall_id}, "meta": {}, "requestId": request_id_var.get()}
 
 
 @router.post("/{stream_id}/watch")
@@ -132,18 +244,24 @@ async def hls_segment(stream_id: str, session_id: str, token: str, name: str, db
 
 @router.get("/hls/{stream_id}/{session_id}/{token}/key/{name}")
 async def hls_key(stream_id: str, session_id: str, token: str, name: str, db: Session = Depends(get_db)):
-    """Proxy an AES-128 decryption key for grid feeds (signed, session-bound)."""
+    """Proxy an AES-128 decryption key for grid feeds (signed, session-bound).
+
+    The key URL is stable for the life of the viewer session (no per-reload
+    re-signing), so the browser fetches it once and hls.js caches it; the
+    per-key lock stops concurrent tiles from stampeding the origin.
+    """
     sess = db.get(ViewerSession, session_id)
     if not sess or not sess.active or sess.stream_id != stream_id:
         raise SentinelError("SESSION_INVALID", "Viewer session is invalid or expired", 403)
-    if not verify_segment_token(stream_id, name, session_id, token):
-        raise SentinelError("KEY_TOKEN_INVALID", "Key link expired", 403)
+    if not verify_key_token(stream_id, name, session_id, token):
+        raise SentinelError("KEY_TOKEN_INVALID", "Key link invalid for this session", 403)
     s = db.get(StreamSource, stream_id)
     if not s:
         raise SentinelError("STREAM_NOT_FOUND", "Stream not found", 404)
     spec = OriginSpec.from_source(s)
     db.close()  # release the pooled connection BEFORE upstream I/O
-    data = await fetch_key(spec, name)
+    async with _key_locks.setdefault(name, asyncio.Lock()):
+        data = await fetch_key(spec, name)
     return Response(content=data, media_type="application/octet-stream")
 
 

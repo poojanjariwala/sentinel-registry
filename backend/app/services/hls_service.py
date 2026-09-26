@@ -97,6 +97,42 @@ def verify_segment_token(stream_id: str, name: str, session_id: str, token: str)
     return _sign_part(stream_id, name, ttl, session_id) == sig
 
 
+# AES decryption keys are static per source, so they are cached per session
+# instead of re-signed with a fresh TTL on every playlist reload (hls.js then
+# re-downloads the key every reload, multiplying upstream key requests by the
+# tile count). One stable token per (session, key) - the key is fetched once
+# per viewer session and served from the server-side cache afterwards.
+def sign_session_key(stream_id: str, name: str, session_id: str) -> str:
+    # ttl=0 marks a session-scoped token: it carries no expiry of its own and
+    # is only accepted while the viewer session itself is active.
+    return f"0.{_sign_part(stream_id, name, 0, session_id)}"
+
+
+def verify_key_token(stream_id: str, name: str, session_id: str, token: str) -> bool:
+    """Accept only session-scoped key tokens (ttl=0)."""
+    try:
+        ttl_s, sig = token.split(".", 1)
+        if int(ttl_s) != 0:
+            return False
+    except ValueError:
+        return False
+    return _sign_part(stream_id, name, 0, session_id) == sig
+
+
+# One decryption key per (stream, key name) is enough - keys are static per
+# source. cache_clear() on logout is a courtesy; a bounded cache is safe even
+# if it never fires because keys carry no per-user secret.
+_key_cache: dict[tuple[str, str], bytes] = {}
+
+
+def cache_clear_key(name: str) -> None:
+    _key_cache.pop(name, None)
+
+
+def cache_clear_all() -> None:
+    _key_cache.clear()
+
+
 def _upstream_base(source_url: str) -> str:
     parts = urlsplit(source_url)
     return f"{parts.scheme}://{parts.netloc}{parts.path.rsplit('/', 1)[0]}"
@@ -178,7 +214,7 @@ def _rewrite_to_rolling_window(
             m = re.search(r'URI="([^"]+)"', h)
             if m:
                 key_name = m.group(1).rsplit("/", 1)[-1]
-                token = sign_segment(spec.stream_id, key_name, session_id)
+                token = sign_session_key(spec.stream_id, key_name, session_id)
                 proxied = (
                     f"/api/v1/streams/hls/{spec.stream_id}/{session_id}/{token}/key/{key_name}"
                 )
@@ -256,17 +292,25 @@ async def fetch_playlist(spec: OriginSpec, session_id: str) -> tuple[str, dict]:
 async def fetch_key(spec: OriginSpec, name: str) -> bytes:
     """Proxy an AES-128 decryption key for grid feeds (signed route only).
 
-    HLS key URIs may be playlist-relative (seg dir) or origin-absolute
-    ("/enc.key" on the grid) - try both locations, first 200 wins.
+    Keys are static per source, so the successful bytes are cached and reused
+    for the process lifetime. HLS key URIs may be origin-absolute ("/enc.key"
+    on the grid) or playlist-relative (seg dir) - the origin root is tried
+    first (the grid 403s its segment dirs) and the seg dir is the fallback.
     """
+    cached = _key_cache.get(name)
+    if cached:
+        return cached
     parts = urlsplit(spec.source_url)
     origin = f"{parts.scheme}://{parts.netloc}"
     seg_dir = f"{origin}{parts.path.rsplit('/', 1)[0]}"
     last_err = "unknown"
-    for base in (seg_dir, origin):
+    for base in (origin, seg_dir):
         try:
             resp = await _fetch_upstream(f"{base}/{name}", spec, timeout=12.0)
             if resp.status_code == 200 and resp.content:
+                if len(_key_cache) > 64:  # bound memory (keys are 16 bytes)
+                    _key_cache.clear()
+                _key_cache[name] = resp.content
                 return resp.content
             if resp.status_code == 403 and "watch time" in resp.text.lower():
                 raise SentinelError("GRID_COOLDOWN", "Grid watch-time quota exhausted", 502)

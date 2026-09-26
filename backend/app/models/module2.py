@@ -165,3 +165,4 @@ class VideoWall(Base):
     tiles: Mapped[dict] = mapped_column(JSONB, nullable=False)  # [{stream_id, slot}]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

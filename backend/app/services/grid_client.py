@@ -96,8 +96,12 @@ async def _get_client() -> httpx.AsyncClient:
 
 
 def _bounced_to_login(resp: httpx.Response) -> bool:
-    # The grid redirects expired sessions to the login page (followed to 200).
-    return "/auth/login" in str(resp.url) or resp.status_code in (401, 403)
+    # A real bounce is a redirect to the login page (followed to 200 HTML) or
+    # an explicit 401. A plain 403 is NOT a bounce: the grid 403s unauthorised
+    # resources (e.g. key/segment locations) with a valid session, and
+    # re-logging-in on every 403 floods the login endpoint - the origin then
+    # throttles the account and every live tile dies at once.
+    return "/auth/login" in str(resp.url) or resp.status_code == 401
 
 
 async def _login(client: httpx.AsyncClient) -> None:
@@ -121,6 +125,16 @@ async def _login(client: httpx.AsyncClient) -> None:
         _cooldown_until = time.time() + _WATCH_TIME_COOLDOWN_SECONDS
         raise GridAuthError(
             f"grid watch-time quota exhausted; backing off for {cooldown_remaining_seconds()}s",
+            code="GRID_COOLDOWN",
+        )
+    if resp.status_code == 403:
+        # A bare 403 (no watch-time text) on the login form itself means the
+        # origin is throttling the account. Back off with the same window so
+        # the flood stops and the quota recovers; the user-facing effect
+        # ("cooldown, retry later") is identical to the quota case.
+        _cooldown_until = time.time() + _WATCH_TIME_COOLDOWN_SECONDS
+        raise GridAuthError(
+            f"grid login throttled (HTTP 403); backing off for {cooldown_remaining_seconds()}s",
             code="GRID_COOLDOWN",
         )
     _logged_in = False
@@ -156,3 +170,8 @@ async def fetch_camera_catalogue() -> list[dict]:
     if isinstance(data, dict):
         data = data.get("cameras") or data.get("items") or []
     return [item for item in data if isinstance(item, dict)]
+
+
+def grid_unavailable() -> bool:
+    """True when login is throttled/quota-drained (live tiles and probes back off)."""
+    return in_cooldown()
