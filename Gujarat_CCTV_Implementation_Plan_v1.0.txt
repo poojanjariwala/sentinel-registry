@@ -1,0 +1,347 @@
+GUJARAT POLICE INNOVATION CHALLENGE 2026
+IMPLEMENTATION PLAN
+Phases • Timeline • Ownership • Tooling • Testing • Deployment • Success Metrics
+Version 1.0 — Developer Ready
+
+1. IMPLEMENTATION OBJECTIVE
+---------------------------
+• Build a working, reproducible prototype of the Gujarat CCTV Intelligence Platform that demonstrates the complete operational chain: feed ingestion → AI/ANPR → searchable observations → cross-camera route reconstruction → authorized watchlist correlation → alert → evidence → audit.
+• The implementation must be realistic enough to extend toward the statewide architecture without pretending that a hackathon prototype is already an 80,000-camera production deployment.
+• Priority order: compliance and working flow first, reliability second, measurable performance third, visual polish fourth, advanced features last.
+
+2. DELIVERY STRATEGY
+--------------------
+• Use a vertical-slice approach. Every major phase should end with a working end-to-end increment rather than building frontend, backend and AI separately for weeks.
+• Keep one canonical demo path working throughout development.
+• Build against simulated/replayable feeds first, then adapt the same interfaces to government sandbox feeds.
+• Keep government integrations behind adapters so unavailable credentials/APIs do not block the rest of the platform.
+• Use feature flags for experimental AI models and advanced analytics.
+
+3. PROJECT PHASES
+-----------------
+• PHASE 0 — Planning & environment
+• PHASE 1 — Foundation: repository, CI/CD, database, authentication, camera registry.
+• PHASE 2 — Feed ingestion: RTSP/WebRTC/HLS abstraction, stream health and unified viewing.
+• PHASE 3 — AI pipeline: vehicle detection, ANPR, normalization and event generation.
+• PHASE 4 — Investigation: search, GIS, timeline and cross-camera route reconstruction.
+• PHASE 5 — Watchlist & alerts: adapter contracts, matching, alert lifecycle and evidence.
+• PHASE 6 — Security, audit & observability.
+• PHASE 7 — Scale/load/failure testing.
+• PHASE 8 — Hackathon hardening, documentation and final demonstration.
+• PHASE 9 — Post-hackathon production roadmap.
+
+4. PHASE 0 — PLANNING & ENVIRONMENT
+-----------------------------------
+• Create Git repository and branch strategy.
+• Freeze PRD, TRD, Backend Schema and UI/UX Design Brief as baseline documents.
+• Create issue tracker with epics for platform, ingestion, AI, investigation, security and demo.
+• Create local development environment with Docker.
+• Create .env.example without secrets.
+• Set up PostgreSQL/PostGIS, Redis, Kafka-compatible broker and object storage.
+• Set up Python/Node frontend/backend tooling according to the approved stack.
+• Create initial architecture decision records for major technology choices.
+• Deliverable: every developer can clone, configure and start the platform from documented commands.
+
+5. PHASE 1 — FOUNDATION
+-----------------------
+• Implement database migrations and core entities.
+• Implement authentication and RBAC.
+• Implement Department, Site, VMS and Camera CRUD.
+• Implement camera GIS metadata.
+• Implement stream profile configuration.
+• Implement camera health model.
+• Implement base API error contract and request IDs.
+• Implement frontend shell and navigation.
+• Implement basic command center with real backend data.
+• Exit criterion: user can log in, register a camera, see it on the map and inspect its status.
+
+6. PHASE 2 — FEED INGESTION
+---------------------------
+• Implement common stream abstraction.
+• Implement RTSP ingestion first.
+• Add WebRTC and HLS adapters using the same internal contract.
+• Implement reconnect/backoff.
+• Implement stream health metrics: latency, FPS, bitrate, packet loss where available.
+• Implement simulated-feed/replay mode.
+• Implement unified camera viewer.
+• Clearly label LIVE, SIMULATED LIVE and REPLAY.
+• Exit criterion: multiple feeds can be connected and viewed without changing downstream AI/search code.
+
+7. PHASE 3 — AI / ANPR
+----------------------
+• Select and benchmark vehicle detector and ANPR model.
+• Implement AI worker interface.
+• Implement configurable analytics profiles.
+• Implement frame sampling rather than processing every frame by default.
+• Implement plate OCR.
+• Implement plate_raw + plate_normalized.
+• Implement confidence scores.
+• Create vehicle_observation records.
+• Store evidence snapshots/clips in object storage.
+• Publish vehicle.detected/anpr.observation.created events.
+• Exit criterion: a feed produces searchable, timestamped vehicle observations with evidence.
+
+8. PHASE 4 — INVESTIGATION
+--------------------------
+• Implement vehicle search API and UI.
+• Implement time/district/department/camera filters.
+• Implement observation timeline.
+• Implement GIS observation markers.
+• Implement route reconstruction service.
+• Apply temporal and geographic feasibility rules.
+• Store route links and reason codes.
+• Display route confidence and uncertainty.
+• Implement selected observation → evidence workflow.
+• Exit criterion: entering a target plate produces an explainable multi-camera route.
+
+9. PHASE 5 — WATCHLIST, ALERTS & EVIDENCE
+-----------------------------------------
+• Create normalized watchlist adapter interface.
+• Implement DEMO_ONLY watchlist adapter first.
+• Implement authorized-source adapter contracts for future VAHAN/SARATHI/eGujCop/CCTNS/AFIS/NAFIS integration.
+• Implement possible-match records.
+• Implement alert rules and severity.
+• Implement acknowledgement/assignment/escalation/closure.
+• Implement investigation/case linkage.
+• Implement evidence export and SHA-256 manifest.
+• Implement audit events for all sensitive actions.
+• Exit criterion: a vehicle observation can trigger a reviewable alert containing evidence and traceable source data.
+
+10. PHASE 6 — SECURITY & OBSERVABILITY
+--------------------------------------
+• Enforce RBAC on every sensitive endpoint.
+• Add MFA/SSO integration point.
+• Move all secrets to secure configuration/secret storage.
+• Enable TLS in deployment environments where applicable.
+• Add API rate limits.
+• Add structured JSON logging.
+• Add request/correlation IDs.
+• Add Prometheus metrics and Grafana dashboards.
+• Add OpenTelemetry tracing.
+• Implement audit viewer.
+• Run security tests: authorization bypass, injection, XSS, insecure object references and secret leakage.
+• Exit criterion: security checklist passes and every sensitive action is auditable.
+
+11. PHASE 7 — SCALE & RESILIENCE TESTING
+----------------------------------------
+• Baseline 10 feeds.
+• Test 30 feeds.
+• Test 50 feeds to mirror the expected sandbox-style demonstration scale.
+• Test 100+ simulated feeds to demonstrate horizontal architecture.
+• Measure event throughput, ANPR latency, alert latency, route latency, CPU/GPU/RAM, network, Kafka lag and database/search latency.
+• Test camera disconnect/reconnect storm.
+• Test AI worker failure.
+• Test broker delay/failure.
+• Test database failover/restart.
+• Test object storage failure.
+• Test temporary network loss.
+• Document measured limits and extrapolation methodology toward the statewide estate.
+• Exit criterion: benchmark report exists; no unsupported 80K claim is made.
+
+12. PHASE 8 — HACKATHON HARDENING
+---------------------------------
+• Freeze a deterministic judge demo dataset.
+• Create a complete 2–3 minute primary demo path.
+• Prepare a backup replay path in case live feed connectivity fails.
+• Verify government/sandbox feed compatibility before final presentation.
+• Verify all visible data is either authorized or clearly marked simulated.
+• Test vehicle route reconstruction with at least one clean route and one ambiguous route.
+• Verify alert evidence opens in one click.
+• Verify report export.
+• Verify audit trail.
+• Verify camera failure recovery.
+• Prepare architecture, security, scalability and AI benchmark slides.
+• Remove debug UI, fake data labels that look real, dead buttons and unfinished screens.
+• Exit criterion: another team member can run the demo from the README without the original developer.
+
+13. PHASE 9 — POST-HACKATHON PRODUCTION ROADMAP
+-----------------------------------------------
+• Replace demo identity with government-approved SSO.
+• Connect approved government APIs/data interfaces.
+• Deploy regional gateways.
+• Introduce Kubernetes multi-node deployment.
+• Scale Kafka partitions and AI workers.
+• Introduce dedicated search cluster if required.
+• Implement HA PostgreSQL/object storage according to infrastructure requirements.
+• Complete penetration testing and security review.
+• Complete AI validation on representative government data.
+• Establish operational RPO/RTO and SLAs.
+• Conduct controlled pilot before statewide expansion.
+
+14. TEAM STRUCTURE
+------------------
+• TECH LEAD / ARCHITECT — architecture, integration decisions, code review, scalability.
+• BACKEND ENGINEER — APIs, database, auth, event services.
+• AI/COMPUTER VISION ENGINEER — detection, ANPR, model evaluation, GPU pipeline.
+• FRONTEND ENGINEER — command center, GIS, investigation, alert UX.
+• DEVOPS/SECURITY ENGINEER — Docker/Kubernetes, CI/CD, secrets, monitoring, security testing.
+• QA / TEST ENGINEER — E2E, load, failure and acceptance testing.
+• PRODUCT/DOCUMENTATION OWNER — requirements, demo story, documentation and submission artifacts.
+• For a small team, combine roles but do not skip the responsibilities.
+
+15. OWNERSHIP MATRIX
+--------------------
+• Architecture: Tech Lead — consulted: all engineering.
+• Database/API: Backend — consulted: Tech Lead, Frontend, AI.
+• AI/ANPR: AI Engineer — consulted: Backend, Product.
+• UI/GIS: Frontend — consulted: Backend, Product.
+• Infrastructure/Security: DevOps/Security — consulted: Backend, Tech Lead.
+• Testing: QA — consulted: every owner.
+• Demo/Submission: Product/Tech Lead — consulted: all.
+
+16. DEVELOPMENT WORKFLOW
+------------------------
+• Use Git with protected main branch.
+• Use short-lived feature branches.
+• Pull requests require review before merge.
+• CI must run linting, unit tests and build checks.
+• Integration/E2E tests run on every relevant PR or merge.
+• Commit messages should be meaningful enough to reconstruct major changes.
+• Use issue IDs in PR titles.
+• Use feature flags for risky changes.
+• Never merge secrets or real government credentials.
+• Tag release candidates before the final demo.
+
+17. SPRINT / WEEKLY PLAN
+------------------------
+• WEEK 1: environment, architecture freeze, schema, auth, camera registry.
+• WEEK 2: GIS, stream abstraction, RTSP, health, viewer.
+• WEEK 3: AI worker, vehicle detection, ANPR, observation events.
+• WEEK 4: search, timeline, GIS route reconstruction.
+• WEEK 5: watchlist adapter, alerts, evidence, audit.
+• WEEK 6: WebRTC/HLS, security hardening, observability.
+• WEEK 7: load/failure testing, performance tuning, government/sandbox feed validation.
+• WEEK 8: final UI polish, documentation, demo rehearsal, submission packaging.
+• If the actual hackathon deadline is shorter, preserve the P0 vertical slice and drop P2 features first.
+
+18. DAILY DEVELOPMENT LOOP
+--------------------------
+• Start with a clean known-good build.
+• Pick one acceptance criterion.
+• Implement the smallest vertical slice.
+• Test with real/replayable data.
+• Log measurable results.
+• Review security/authorization impact.
+• Update documentation/API schema.
+• Merge only when the acceptance criterion passes.
+
+19. TOOLING
+-----------
+• Git + GitHub/GitLab.
+• VS Code or equivalent IDE.
+• Docker/Docker Compose.
+• PostgreSQL/PostGIS.
+• Redis.
+• Kafka-compatible broker.
+• MinIO/S3-compatible object storage.
+• FFmpeg/GStreamer.
+• Python + FastAPI.
+• React + TypeScript.
+• Prometheus + Grafana.
+• OpenTelemetry.
+• Pytest, HTTPX, Playwright/Cypress as selected.
+• k6/Locust for load tests.
+• Figma for UI specification.
+
+20. DEPLOYMENT PIPELINE
+-----------------------
+• Developer commit → CI lint/test/build → container build → security scan → staging deploy → integration/E2E → release candidate → demo/prod-like deploy.
+• Use separate environments: local, development, staging, demo.
+• Never use production credentials in development.
+• Keep environment-specific configuration outside source code.
+• Use versioned Docker images.
+
+21. DATA / AI RELEASE PROCESS
+-----------------------------
+• Model trained/selected → benchmark → model hash recorded → approved model registry entry → staged deployment → smoke test → monitoring → release.
+• Never silently replace an AI model.
+• Every observation must retain model version.
+• Rollback must be possible.
+• AI thresholds must be configuration, not hard-coded constants.
+
+22. DEMO DATA PLAN
+------------------
+• Use a controlled set of simulated feeds representing multiple departments and locations.
+• Include different resolutions and camera conditions.
+• Include at least one target vehicle appearing across several cameras.
+• Include one OCR ambiguity to demonstrate confidence/fuzzy matching.
+• Include one camera failure.
+• Include one watchlist possible match.
+• Include one evidence export.
+• Keep a deterministic replay so the demo result is repeatable.
+
+23. HACKATHON DEMO RUNBOOK
+--------------------------
+• 0:00 — open command center and show system health.
+• 0:10 — enter target vehicle number.
+• 0:20 — show observations across cameras.
+• 0:35 — open GIS route.
+• 0:50 — inspect evidence.
+• 1:05 — show possible watchlist match.
+• 1:15 — show alert and acknowledge/assign.
+• 1:25 — export investigation report.
+• 1:40 — disconnect a feed / show graceful degradation.
+• 1:55 — show architecture and measured scale strategy.
+• 2:10 — close with production expansion path.
+
+24. SUCCESS METRICS
+-------------------
+• Functional: complete vehicle investigation flow works end-to-end.
+• Feed: target protocols connect successfully in the test environment.
+• ANPR: benchmark exact-match/precision/recall and false-positive rates on the chosen dataset.
+• Latency: measure ingest-to-observation and observation-to-alert latency.
+• Route: measure reconstruction success and false transitions.
+• Reliability: no single camera/worker failure should crash the platform.
+• Security: zero known critical secrets or authorization bypasses in the tested build.
+• Scalability: measured throughput at 10/30/50/100+ simulated feeds.
+• Usability: target operator workflow completes in a small number of actions; validate with actual team members.
+• Reproducibility: fresh developer can deploy the demo from the README.
+
+25. RISKS & CONTINGENCY PLAN
+----------------------------
+• Government feed unavailable → maintain protocol-compatible replay/simulated feed and keep the same adapter interface.
+• AI model underperforms → benchmark alternatives; tune thresholds; keep evidence/confidence visible.
+• GPU unavailable → use lower-resolution/sampled inference for demo; retain same worker interface.
+• Kafka complexity blocks MVP → use a Kafka-compatible local setup; keep event contract independent of broker.
+• Database/search becomes bottleneck → add indexes first, then partitioning/search cluster only when measurements justify it.
+• Live demo network failure → deterministic replay mode.
+• Developer unavailable → README/runbook + documented environment + issue ownership.
+• Scope explosion → enforce P0/P1/P2 priority and freeze new features before final testing.
+
+26. DEFINITION OF DONE FOR THE HACKATHON
+----------------------------------------
+• All P0 services run from a documented setup.
+• Camera registry and GIS work.
+• At least the required/available sandbox feed protocols are handled through the common abstraction.
+• Vehicle detection and ANPR produce observations.
+• Vehicle search and cross-camera route work.
+• Watchlist adapter contract and demo match work.
+• Alerts, evidence and audit work.
+• Authentication/RBAC works.
+• Health/observability works.
+• Load and failure tests have results.
+• UI is polished and consistent with the UI/UX Design Brief.
+• Demo is reproducible.
+• Technical documents are synchronized with the implementation.
+• No unsupported claims are made in the presentation.
+
+27. POST-DEMO PRODUCTION GATES
+------------------------------
+• Government authorization for integrations.
+• Security architecture review.
+• Threat model and penetration test.
+• Representative AI evaluation dataset.
+• Network and infrastructure capacity study.
+• HA/DR validation.
+• Retention and data-governance approval.
+• Operational support model.
+• Monitoring/SIEM integration.
+• Controlled regional pilot.
+• Only after these gates should the platform be positioned as production-ready.
+
+28. FINAL IMPLEMENTATION RULE
+-----------------------------
+• Build the smallest system that proves the hardest problem: heterogeneous CCTV feeds can become reliable, searchable intelligence without breaking existing departmental infrastructure.
+• Then scale horizontally, add integrations, harden security and improve analytics.
+• Do not spend the first weeks building a beautiful dashboard around fake data.
+• Every week should end with a working, testable slice of the actual police investigation workflow.

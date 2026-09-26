@@ -1,0 +1,469 @@
+GUJARAT POLICE INNOVATION CHALLENGE 2026
+TECHNICAL REQUIREMENTS DOCUMENT (TRD)
+Statewide CCTV Federation, Unified Viewing, Selective AI Analytics & Investigation Platform
+TRD v1.0 — Developer-Ready Build Specification
+
+==============================================================================
+
+1. Document Purpose
+-------------------
+• This TRD converts the product/architecture requirements into implementation-ready technical requirements for a prototype that can be demonstrated on government-style sandbox feeds and extended toward statewide deployment.
+• The system shall integrate heterogeneous departmental CCTV/VMS environments without requiring immediate replacement of existing departmental systems. It shall provide camera registry/GIS, feed federation, unified viewing, selective AI/ANPR, event streaming, vehicle search, cross-camera route reconstruction, watchlist correlation, alerts, evidence, audit and operational health monitoring.
+
+2. Product Scope
+----------------
+• IN SCOPE: camera registry and GIS; departmental/VMS federation; RTSP/WebRTC/HLS ingestion; stream health; unified live viewing; selective edge/regional AI; vehicle detection and ANPR; plate normalization; event bus; searchable observations; cross-camera vehicle correlation; watchlist adapters; real-time alerts; investigation timeline/map; evidence export; RBAC; audit; observability; load testing.
+• OUT OF SCOPE FOR MVP: replacement of every departmental VMS; unconditional ingestion of all statewide video into one central storage cluster; direct database access to government systems without authorized interfaces; unrestricted private-camera access; fully autonomous enforcement decisions; claims of production 80,000-camera capacity without measured testing.
+
+3. Architecture Requirements
+----------------------------
+• ARCH-001: Model 1 — Central CCTV Registry & GIS Foundation — shall be implemented as a mandatory foundation.
+• ARCH-002: Model 3 — Federation/Middleware — shall provide adapters between central services and heterogeneous departmental VMS/cameras.
+• ARCH-003: Model 2 — Unified Viewing — shall expose authorized live streams through a common operator experience.
+• ARCH-004: Selective AI shall run at edge/regional GPU workers where practical instead of forcing every frame through one central AI cluster.
+• ARCH-005: Video transport and intelligence events shall be decoupled. Raw video is high-bandwidth; normalized events/metadata shall flow through an event platform.
+• ARCH-006: The system shall be horizontally scalable by adding gateways, AI workers, brokers, API instances and search/storage capacity.
+• ARCH-007: All external integrations shall use adapters/contracts so a vendor or government API can be replaced without rewriting core services.
+
+4. Logical Architecture
+-----------------------
+CAMERA / DEPARTMENT VMS
+        |
+        | ONVIF / RTSP / WebRTC / HLS / Vendor API
+        v
+FEDERATION ADAPTER LAYER
+        |
+        v
+REGIONAL / EDGE GATEWAY
+  | stream normalization
+  | buffering / reconnect
+  | health monitoring
+  | selective AI
+        |
+        +------> AI WORKERS
+        |          | vehicle / ANPR
+        |          | confidence / evidence
+        |
+        v
+EVENT BUS (Kafka or equivalent)
+        |
+        +--> Event Store / Search Index
+        +--> Alert Engine
+        +--> Watchlist Gateway
+        +--> GIS / Investigation
+        +--> Audit
+        |
+        v
+CENTRAL APPLICATION SERVICES
+        |
+        +--> Camera Registry
+        +--> Unified Viewer
+        +--> Vehicle Search
+        +--> Route Reconstruction
+        +--> Evidence Service
+        +--> Identity / RBAC
+        +--> System Health
+        |
+        v
+POLICE OPERATOR WEB UI
+
+5. Core Services
+----------------
+• 5.1 Camera Registry Service — authoritative metadata for cameras, departments, sites, streams, VMS, locations, health, analytics profiles and access policy.
+• 5.2 GIS Service — camera map, status layers, alert layers and investigation routes.
+• 5.3 Federation Service — connector lifecycle, VMS discovery/registration, stream URLs, protocol adapters and vendor-specific integration.
+• 5.4 Stream Gateway — protocol normalization, reconnect, buffering, stream health and viewer session management.
+• 5.5 AI Orchestrator — assigns analytics profiles to cameras/workers, controls sampling and records model/version metadata.
+• 5.6 ANPR/Vehicle Service — detection, OCR, normalization, confidence scoring and observation creation.
+• 5.7 Event Service — durable event publication, consumption, deduplication and schema validation.
+• 5.8 Search Service — plate/time/camera/district/event queries and indexed observations.
+• 5.9 Correlation Service — cross-camera route reconstruction using time, geography, direction and confidence constraints.
+• 5.10 Watchlist Gateway — normalized interface for authorized VAHAN/SARATHI/eGujCop/CCTNS/AFIS/NAFIS integrations.
+• 5.11 Alert Service — rule evaluation, severity, assignment, acknowledgement, escalation and closure.
+• 5.12 Evidence Service — snapshots/clips, hashes, manifests, export and access logs.
+• 5.13 Identity/RBAC Service — users, roles, scopes, tokens and permission enforcement.
+• 5.14 Audit Service — immutable security and operational audit events.
+• 5.15 Observability Service — metrics, logs, traces, health and capacity dashboards.
+
+6. Functional Requirements
+--------------------------
+• FR-001 Camera onboarding: authorized administrators shall create, update, disable and validate camera records.
+• FR-002 GIS: every active camera shall be geolocated and visible on the map when coordinates are available.
+• FR-003 Stream validation: the platform shall test connectivity before a camera is marked operational.
+• FR-004 Protocol support: ingestion architecture shall support RTSP, WebRTC and HLS through a common internal stream abstraction.
+• FR-005 Reconnect: temporary camera/network failure shall trigger bounded retries and health-state transitions.
+• FR-006 Unified viewing: authorized users shall open one or more live feeds without needing to understand the source VMS vendor.
+• FR-007 AI profiles: administrators shall enable/disable analytics per camera and select a profile.
+• FR-008 Vehicle detection: AI shall create vehicle observations with timestamp, camera, location and confidence.
+• FR-009 ANPR: OCR shall produce raw and normalized plate values and separate detection/OCR confidence.
+• FR-010 Watchlist match: authorized watchlist queries shall generate possible-match events rather than asserting guilt/identity.
+• FR-011 Cross-camera search: users shall search a target plate across cameras and time ranges.
+• FR-012 Route reconstruction: observations shall be ordered and filtered for temporal/geographic plausibility; uncertain gaps shall be shown.
+• FR-013 Alerts: configurable rules shall create alerts with severity, reason, confidence and evidence.
+• FR-014 Investigation: users shall view a timeline, map, camera details and supporting evidence.
+• FR-015 Evidence: authorized users shall export evidence with metadata and SHA-256 hash.
+• FR-016 Audit: all sensitive searches, views, exports, role changes and alert actions shall be logged.
+• FR-017 Health: operators shall see camera, stream, AI, event-bus, API and storage health.
+• FR-018 Reporting: the platform shall export machine-readable JSON/CSV and human-readable incident reports.
+
+7. Non-Functional Requirements
+------------------------------
+• NFR-001 Availability: individual camera or worker failure shall not crash the central platform.
+• NFR-002 Scalability: services shall support horizontal replication and stateless API scaling where possible.
+• NFR-003 Performance: target alert latency should be measured end-to-end from frame/event ingestion to UI notification; final SLA values shall be set after benchmark testing.
+• NFR-004 Security: TLS for network traffic, encryption at rest where supported, RBAC, least privilege, secrets management and audit logging are mandatory.
+• NFR-005 Reliability: event processing shall be retryable and idempotent.
+• NFR-006 Observability: all critical services shall expose health, metrics and structured logs.
+• NFR-007 Maintainability: code shall use modular services, typed contracts, versioned APIs and automated tests.
+• NFR-008 Portability: deployment shall be containerized and reproducible.
+• NFR-009 Data governance: retention and access policy shall be configurable by source/department and enforced automatically.
+• NFR-010 Evidence integrity: exported evidence shall have a cryptographic hash and chain-of-custody metadata.
+
+8. Data Model
+-------------
+Camera
+- camera_id: UUID
+- department_id
+- department_name
+- site_id
+- site_name
+- district
+- taluka
+- address
+- latitude
+- longitude
+- vendor
+- model
+- protocols_supported[]
+- vms_id
+- stream_profile
+- retention_policy
+- edge_gateway_id
+- analytics_profile
+- privacy_class
+- access_policy
+- status
+- last_seen
+- created_at
+- updated_at
+
+VehicleObservation
+- observation_id: UUID
+- camera_id
+- timestamp_utc
+- plate_raw
+- plate_normalized
+- vehicle_class
+- vehicle_color
+- make_model
+- direction
+- bbox
+- detection_confidence
+- ocr_confidence
+- evidence_uri
+- model_name
+- model_version
+- pipeline_version
+
+Alert
+- alert_id
+- alert_type
+- severity
+- source_event_id
+- target_entity
+- confidence
+- reason
+- status
+- assigned_to
+- created_at
+- acknowledged_at
+- closed_at
+
+Evidence
+- evidence_id
+- case_id
+- source_camera
+- source_vms
+- capture_timestamp
+- export_timestamp
+- operator_id
+- sha256
+- media_uri
+- manifest_uri
+- access_policy
+
+9. API Requirements
+-------------------
+• API style: REST/JSON for control-plane and search operations; WebSocket/SSE for live alert/event updates; streaming protocols remain in the media plane.
+• All APIs shall be versioned under /api/v1.
+• Every request shall support a correlation/request ID.
+• Authentication shall use short-lived access tokens or approved SSO integration.
+• Authorization shall be checked server-side for every sensitive resource.
+• Pagination is mandatory for list/search endpoints.
+• Errors shall use a consistent schema: code, message, request_id, details.
+
+10. Core API Endpoints
+----------------------
+• GET/POST /api/v1/cameras
+• GET/PATCH /api/v1/cameras/{cameraId}
+• POST /api/v1/cameras/{cameraId}/validate
+• GET /api/v1/streams/{cameraId}
+• GET /api/v1/events
+• GET /api/v1/vehicles/{plate}/observations
+• POST /api/v1/routes/reconstruct
+• GET /api/v1/alerts
+• POST /api/v1/alerts/{alertId}/acknowledge
+• POST /api/v1/alerts/{alertId}/close
+• GET /api/v1/watchlists/{entityType}/{identifier}
+• GET /api/v1/investigations/{caseId}
+• POST /api/v1/evidence/export
+• GET /api/v1/health
+• GET /api/v1/audit
+• OpenAPI 3.x shall document all public service contracts.
+
+11. Event Contracts
+-------------------
+vehicle.detected
+{
+  "event_id": "uuid",
+  "event_type": "vehicle.detected",
+  "occurred_at": "ISO-8601",
+  "camera_id": "uuid",
+  "plate_raw": "GJ...",
+  "plate_normalized": "GJ...",
+  "vehicle_class": "car",
+  "direction": "N",
+  "detection_confidence": 0.96,
+  "ocr_confidence": 0.91,
+  "evidence_uri": "...",
+  "model_version": "anpr-1.0"
+}
+
+watchlist.match.possible
+{
+  "event_id": "uuid",
+  "event_type": "watchlist.match.possible",
+  "source_observation_id": "uuid",
+  "watchlist_source": "AUTHORIZED_SOURCE",
+  "match_confidence": 0.87,
+  "reason_codes": ["PLATE_MATCH"],
+  "created_at": "ISO-8601"
+}
+
+camera.health.changed
+{
+  "camera_id": "uuid",
+  "previous_status": "ONLINE",
+  "new_status": "DEGRADED",
+  "reason": "PACKET_LOSS",
+  "occurred_at": "ISO-8601"
+}
+
+12. UI/UX Technical Requirements
+--------------------------------
+• Screen 1 — Command Dashboard: alerts, camera health, active feeds, map and system health.
+• Screen 2 — Camera Registry/GIS: searchable camera table + map; filters for department, district, status and analytics profile.
+• Screen 3 — Unified Viewer: grid of authorized streams; camera metadata and health visible.
+• Screen 4 — Vehicle Investigation: plate search, timeline, route map, observations and evidence.
+• Screen 5 — Alert Detail: alert reason, confidence, source camera, evidence, watchlist status and operator actions.
+• Screen 6 — Evidence/Report: preview, metadata, hash, export and audit history.
+• Screen 7 — Administration: users, roles, camera onboarding, analytics profiles, integrations and policies.
+• UX rule: the main judge workflow — enter plate -> see sightings -> see route -> open evidence -> generate report — should be executable in a few clicks.
+
+13. AI/ANPR Technical Requirements
+----------------------------------
+• Use a pluggable model interface so detector/OCR models can be changed without changing business logic.
+• Every inference must record model name/version, threshold and timestamp.
+• Store plate_raw and plate_normalized separately.
+• Normalize uppercase, whitespace, punctuation and known OCR-confusion characters only according to a controlled rule set.
+• Do not convert uncertain OCR into a definite identity.
+• Alert thresholds shall be configurable and benchmarked on representative data.
+• AI workers shall expose queue depth, inference latency, FPS, GPU utilization and error metrics.
+
+14. Cross-Camera Correlation
+----------------------------
+• Inputs: plate similarity, timestamp, camera coordinates, direction, vehicle attributes and confidence.
+• Reject impossible transitions using configurable minimum/maximum travel-time constraints.
+• Deduplicate near-identical observations.
+• Produce route confidence and explicit uncertainty/gaps.
+• Never fabricate an intermediate camera observation.
+• Store the observations that caused each route link so an investigator can explain the result.
+
+15. Security Requirements
+-------------------------
+• SEC-001 MFA/SSO shall be supported where available.
+• SEC-002 RBAC shall be scoped by role, department, district, camera group and sensitive operation.
+• SEC-003 No camera endpoint shall be publicly exposed by default.
+• SEC-004 Secrets shall not be stored in source code or Git.
+• SEC-005 TLS shall protect control-plane and integration traffic.
+• SEC-006 Sensitive searches and exports shall be audited.
+• SEC-007 Evidence exports shall be hashed.
+• SEC-008 API rate limiting and input validation shall be implemented.
+• SEC-009 Dependencies and containers shall be vulnerability-scanned.
+• SEC-010 Government credentials/data used for testing shall never be committed to the repository.
+
+16. Recommended Technology Stack
+--------------------------------
+• Frontend: React + TypeScript + Vite/Next.js; MapLibre GL JS or Leaflet; WebSocket/SSE client.
+• Backend: Python FastAPI for AI/search/integration services and/or Node.js/NestJS for control-plane services. Use one primary backend language for the prototype unless a separate AI service is justified.
+• Database: PostgreSQL + PostGIS for authoritative metadata and GIS.
+• Search: OpenSearch/Elasticsearch for high-volume observation search if PostgreSQL indexing becomes insufficient.
+• Event bus: Apache Kafka; Redis may be used for cache/session/short-lived state.
+• Media: FFmpeg/GStreamer plus protocol-specific gateway components; WebRTC gateway as required.
+• AI: Python, PyTorch/ONNX Runtime/TensorRT where supported, GPU workers.
+• Object storage: S3-compatible storage such as MinIO for prototype; production may use approved government/object storage.
+• Deployment: Docker Compose for single-node demo; Kubernetes for production-style regional/state deployment.
+• Observability: Prometheus + Grafana + OpenTelemetry; centralized structured logs.
+• CI/CD: GitHub Actions/GitLab CI/Jenkins according to project environment.
+
+17. Repository Structure
+------------------------
+cctv-platform/
+  apps/
+    web/
+    api/
+  services/
+    camera-registry/
+    federation/
+    stream-gateway/
+    ai-orchestrator/
+    anpr/
+    event-service/
+    search/
+    correlation/
+    watchlist/
+    alert/
+    evidence/
+    audit/
+  packages/
+    contracts/
+    auth/
+    shared/
+  infra/
+    docker/
+    k8s/
+    monitoring/
+  migrations/
+  tests/
+    unit/
+    integration/
+    e2e/
+    load/
+  docs/
+    architecture/
+    api/
+    runbooks/
+    threat-model/
+  scripts/
+  .env.example
+  README.md
+
+18. Deployment Requirements
+---------------------------
+• Prototype: Docker Compose on a high-spec development machine or small server. Use simulated feeds and local object storage.
+• Scale test: Kubernetes with multiple API pods, event-bus brokers, AI workers and storage/search replicas.
+• Regional production concept: camera/VMS -> regional gateway -> regional AI -> state event platform.
+• Use infrastructure-as-code where feasible.
+• All deployments must have health checks, readiness probes, liveness probes and resource limits.
+• Configuration must be environment-based; secrets must be injected through a secure mechanism.
+
+19. Performance & Scale Test Plan
+---------------------------------
+• Test 10, 30, 50 and 100 simultaneous feeds in the prototype/benchmark environment.
+• Measure ingest success, stream latency, ANPR latency, event throughput, alert latency, route-reconstruction latency, CPU/GPU/RAM, network bandwidth, queue lag and database/search latency.
+• Run failure tests: camera disconnect/reconnect storm, AI worker crash, event-bus disruption, database failover and temporary network loss.
+• Do not claim 80,000-camera support from a small demo. Publish measured benchmark data and an extrapolated capacity model.
+• Capacity equations: ingress bandwidth = cameras × average bitrate; AI load = cameras × sampled FPS × model cost; event rate = cameras × average event rate; storage = bitrate × cameras × retention.
+
+20. Testing Strategy
+--------------------
+• Unit tests: plate normalization, confidence logic, RBAC, route constraints, event validation.
+• Integration tests: camera registration, stream validation, event bus, search, watchlist adapter, evidence export.
+• E2E test: feed -> AI -> observation -> search -> route -> alert -> evidence -> audit.
+• Security tests: authentication bypass, authorization bypass, injection, XSS, unsafe file upload, secret leakage and insecure direct object references.
+• Resilience tests: reconnect, retry, duplicate event, worker failure and delayed event delivery.
+• AI tests: day/night, low resolution, multiple vehicle classes, plate angle/occlusion and false-positive measurement.
+
+21. Acceptance Criteria
+-----------------------
+• AC-001 A new camera can be registered and shown on GIS.
+• AC-002 A valid sandbox stream can be connected and displayed.
+• AC-003 Camera health changes are reflected in the dashboard.
+• AC-004 Vehicle detections create searchable observations.
+• AC-005 ANPR output stores raw and normalized plate values.
+• AC-006 A target plate returns chronological multi-camera observations.
+• AC-007 A route is rendered on GIS with timestamps and confidence.
+• AC-008 A watchlist match can create an alert using an authorized adapter/mock contract.
+• AC-009 Alert evidence can be opened and exported with SHA-256.
+• AC-010 Unauthorized users cannot access restricted cameras/data.
+• AC-011 Sensitive actions appear in the audit log.
+• AC-012 The system survives an individual camera/AI-worker failure.
+• AC-013 The benchmark report contains actual measured performance.
+• AC-014 The demo can be reproduced from documented setup instructions.
+
+22. Demo Acceptance Flow
+------------------------
+• 1. Open command dashboard.
+• 2. Show 30–50 simulated feeds and camera health.
+• 3. Enter a target vehicle number.
+• 4. Show normalized plate and observation timeline.
+• 5. Show camera-by-camera route on GIS.
+• 6. Open an evidence frame/clip.
+• 7. Trigger/show a possible watchlist match.
+• 8. Show real-time alert.
+• 9. Acknowledge/assign/close alert.
+• 10. Export report with timestamps and evidence metadata.
+• 11. Disconnect one feed and demonstrate graceful recovery.
+• 12. Show architecture and measured benchmark dashboard.
+
+23. Risks & Mitigations
+-----------------------
+• Vendor incompatibility -> adapter/plugin architecture; validate ONVIF/RTSP/vendor APIs early.
+• Poor government-feed compatibility -> build protocol adapters and a feed simulator for every supported protocol.
+• ANPR false positives -> confidence thresholds, normalization, evidence and human review.
+• Network bandwidth bottleneck -> regional gateways, selective AI, metadata-first architecture.
+• Central bottleneck -> Kafka, horizontal workers, stateless APIs and regional processing.
+• Security failure -> threat model, RBAC, MFA, TLS, secrets management, audit and security tests.
+• Overclaiming scale -> benchmark and publish measured limits.
+• Demo failure -> deterministic replayable test scenario plus live/simulated feed fallback.
+• Government API unavailable -> interface adapter + mock contract; never claim real access without authorization.
+
+24. Open Questions / Inputs Required
+------------------------------------
+• Exact official sandbox stream endpoints and credentials.
+• Exact codec/resolution/FPS profile of government feeds.
+• Authorized access mechanism for VAHAN, SARATHI, eGujCop/CCTNS, AFIS and NAFIS.
+• Exact retention requirements per department.
+• Approved network topology and connectivity between departments/regional/state layers.
+• Required identity/SSO provider.
+• Government-approved cloud/on-prem infrastructure constraints.
+• Exact official evaluation rubric and submission limits from the Sentinel portal.
+• Final production RPO/RTO and SLA values.
+
+25. Developer Definition of Done
+--------------------------------
+• Code compiles/builds reproducibly.
+• All core APIs have OpenAPI documentation.
+• Database migrations are versioned.
+• Unit/integration/E2E tests pass.
+• Demo feed configuration is documented.
+• At least one full vehicle-investigation workflow is deterministic and replayable.
+• Security checklist passes.
+• Failure/recovery test results are recorded.
+• Benchmark report is generated.
+• Architecture diagrams match deployed components.
+• README contains setup, environment variables, seed data, demo steps and troubleshooting.
+• No secrets or real government credentials are stored in the repository.
+
+26. Final Build Priority
+------------------------
+• P0 — Camera Registry + GIS + Auth/RBAC.
+• P0 — Multi-protocol feed ingestion + health.
+• P0 — Vehicle detection + ANPR + normalized observations.
+• P0 — Search + cross-camera route reconstruction.
+• P0 — Alerts + evidence + audit.
+• P1 — Watchlist adapters.
+• P1 — Event bus + regional gateway scaling.
+• P1 — System-health/observability dashboard.
+• P1 — Load testing and failure testing.
+• P2 — Advanced person analytics, anomaly analytics, deeper VMS vendor integrations and future centralized VMS capabilities.

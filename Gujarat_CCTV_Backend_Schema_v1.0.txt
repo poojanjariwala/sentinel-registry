@@ -1,0 +1,689 @@
+GUJARAT POLICE INNOVATION CHALLENGE 2026
+BACKEND SCHEMA
+Database Design • API Structure • Server Architecture
+Version 1.0 — Developer Ready
+
+1. BACKEND PURPOSE
+------------------
+• This document defines the database schema, domain models, API structure, authentication/authorization, storage, caching, event architecture, error handling, observability, scalability and deployment contracts for the Gujarat CCTV Intelligence Platform.
+• The backend must support the complete flow: CCTV/VMS → federation → stream gateway → AI/ANPR → normalized observations → event bus → search → cross-camera correlation → watchlist → alert → evidence → investigation → audit.
+• Primary design principle: keep the control plane, intelligence metadata and high-value evidence centrally searchable while allowing video ingestion and AI processing to scale regionally.
+
+2. RECOMMENDED BACKEND STACK
+----------------------------
+• Primary API: Python 3.12+ with FastAPI.
+• AI/inference services: Python 3.12+ with PyTorch/ONNX Runtime/TensorRT where GPU acceleration is available.
+• Database: PostgreSQL 16+ with PostGIS.
+• Cache/short-lived state: Redis 7+.
+• Event streaming: Apache Kafka 3.x or an approved Kafka-compatible platform.
+• Search: PostgreSQL initially; OpenSearch when observation volume/query requirements justify a dedicated search cluster.
+• Object storage: S3-compatible object storage such as MinIO for prototype; production storage according to government infrastructure policy.
+• Media processing: FFmpeg/GStreamer and protocol-specific gateway components.
+• Realtime UI events: WebSocket or Server-Sent Events.
+• API specification: OpenAPI 3.x.
+• Containerization: Docker; Kubernetes for multi-node/production-style deployment.
+• Observability: Prometheus + Grafana + OpenTelemetry; centralized structured logs.
+• Database migrations: Alembic.
+• Testing: Pytest + HTTPX + integration tests + load testing with k6/Locust.
+
+3. SERVICE ARCHITECTURE
+-----------------------
+• AUTH SERVICE — identity, sessions, tokens, MFA/SSO integration and role permissions.
+• CAMERA REGISTRY SERVICE — departments, sites, cameras, VMS, stream profiles, health and GIS metadata.
+• FEDERATION SERVICE — vendor/VMS adapters, protocol configuration and connector lifecycle.
+• STREAM SERVICE — stream sessions, protocol normalization, reconnect and health.
+• AI ORCHESTRATOR — analytics profiles, worker assignment, model versions and inference jobs.
+• ANPR/VEHICLE SERVICE — detections, OCR, plate normalization and vehicle observations.
+• EVENT SERVICE — event schemas, Kafka publishing/consumption and idempotency.
+• SEARCH SERVICE — observation/search queries and indexes.
+• CORRELATION SERVICE — cross-camera route reconstruction.
+• WATCHLIST SERVICE — normalized adapters to authorized government sources.
+• ALERT SERVICE — rules, severity, assignment and lifecycle.
+• EVIDENCE SERVICE — snapshots/clips, manifests, hashes and exports.
+• INVESTIGATION SERVICE — cases, notes, targets and investigation timelines.
+• AUDIT SERVICE — immutable audit records.
+• HEALTH/OBSERVABILITY SERVICE — service, camera, stream, AI and infrastructure health.
+
+4. DATABASE: SCHEMA CONVENTIONS
+-------------------------------
+• Use PostgreSQL as the source of truth for operational metadata.
+• All primary keys should use UUIDs.
+• All timestamps are stored in UTC using timestamptz; UI converts to Asia/Kolkata when required.
+• Use created_at and updated_at on mutable domain tables.
+• Use soft disable/status fields for operational entities where historical references must remain valid.
+• Use foreign keys for relational integrity.
+• Use CHECK constraints for bounded enums where practical.
+• Use JSONB only for extensible/vendor-specific payloads; do not put core searchable fields exclusively in JSONB.
+• Use PostGIS geometry(Point, 4326) for camera locations.
+• Use snake_case database names and camelCase JSON API fields only if the project convention explicitly chooses that mapping.
+
+5. CORE ENTITY RELATIONSHIP MODEL
+---------------------------------
+• Department 1—N Site
+• Site 1—N Camera
+• Department 1—N VMS
+• VMS 1—N Camera
+• Camera 1—N StreamProfile
+• Camera 1—N CameraHealthEvent
+• Camera 1—N VehicleObservation
+• VehicleObservation 1—N WatchlistMatch
+• VehicleObservation N—N Investigation through InvestigationTarget/ObservationLink
+• Investigation 1—N Evidence
+• Alert N—1 VehicleObservation or Event
+• Alert N—1 Investigation (optional)
+• User N—N Role
+• Role N—N Permission
+• User N—N Scope
+• Case 1—N AuditEvent
+• Every sensitive entity may generate AuditEvent records.
+
+6. TABLE: departments
+---------------------
+• department_id UUID PK
+• name VARCHAR(150) NOT NULL UNIQUE
+• code VARCHAR(50) UNIQUE
+• description TEXT
+• status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE'
+• contact_metadata JSONB
+• created_at TIMESTAMPTZ NOT NULL
+• updated_at TIMESTAMPTZ NOT NULL
+• Indexes: unique(code), status.
+
+7. TABLE: sites
+---------------
+• site_id UUID PK
+• department_id UUID FK -> departments.department_id
+• name VARCHAR(200) NOT NULL
+• address TEXT
+• district VARCHAR(100)
+• taluka VARCHAR(100)
+• latitude DOUBLE PRECISION
+• longitude DOUBLE PRECISION
+• location GEOMETRY(Point,4326)
+• metadata JSONB
+• status VARCHAR(30)
+• created_at TIMESTAMPTZ
+• updated_at TIMESTAMPTZ
+• Indexes: department_id, district, GIST(location).
+
+8. TABLE: vms_systems
+---------------------
+• vms_id UUID PK
+• department_id UUID FK
+• name VARCHAR(200)
+• vendor VARCHAR(120)
+• model VARCHAR(120)
+• version VARCHAR(80)
+• endpoint_reference TEXT
+• protocols JSONB
+• credential_reference VARCHAR(255) — reference to secret manager, never the secret
+• status VARCHAR(30)
+• last_health_at TIMESTAMPTZ
+• created_at TIMESTAMPTZ
+• updated_at TIMESTAMPTZ
+• Never store plaintext VMS passwords in this table.
+
+9. TABLE: cameras
+-----------------
+• camera_id UUID PK
+• department_id UUID FK
+• site_id UUID FK
+• vms_id UUID FK NULL
+• camera_code VARCHAR(100) NOT NULL UNIQUE
+• name VARCHAR(200)
+• camera_type VARCHAR(50)
+• vendor VARCHAR(120)
+• model VARCHAR(120)
+• latitude DOUBLE PRECISION
+• longitude DOUBLE PRECISION
+• location GEOMETRY(Point,4326)
+• district VARCHAR(100)
+• taluka VARCHAR(100)
+• orientation_deg NUMERIC(6,2)
+• field_of_view_deg NUMERIC(6,2)
+• status VARCHAR(30)
+• privacy_class VARCHAR(50)
+• access_policy_id UUID
+• analytics_profile_id UUID NULL
+• edge_gateway_id UUID NULL
+• retention_policy_id UUID NULL
+• created_at TIMESTAMPTZ
+• updated_at TIMESTAMPTZ
+• Indexes: department_id, site_id, vms_id, district, status, GIST(location).
+
+10. TABLE: stream_profiles
+--------------------------
+• stream_profile_id UUID PK
+• camera_id UUID FK
+• profile_name VARCHAR(100)
+• protocol VARCHAR(30) — RTSP/WebRTC/HLS
+• source_reference TEXT
+• resolution VARCHAR(30)
+• fps NUMERIC(6,2)
+• bitrate_kbps INTEGER
+• codec VARCHAR(50)
+• audio_enabled BOOLEAN DEFAULT FALSE
+• is_primary BOOLEAN DEFAULT FALSE
+• status VARCHAR(30)
+• created_at TIMESTAMPTZ
+• updated_at TIMESTAMPTZ
+• Source URLs/credentials must be stored securely or referenced through a secret manager.
+
+11. TABLE: camera_health_events
+-------------------------------
+• health_event_id UUID PK
+• camera_id UUID FK
+• status VARCHAR(30)
+• reason_code VARCHAR(80)
+• latency_ms INTEGER
+• packet_loss_pct NUMERIC(6,3)
+• fps NUMERIC(8,3)
+• bitrate_kbps INTEGER
+• observed_at TIMESTAMPTZ
+• metadata JSONB
+• Index: camera_id + observed_at DESC.
+
+12. TABLE: analytics_profiles
+-----------------------------
+• analytics_profile_id UUID PK
+• name VARCHAR(100) UNIQUE
+• enabled_models JSONB
+• sample_fps NUMERIC(6,2)
+• confidence_thresholds JSONB
+• schedule JSONB
+• priority INTEGER
+• created_at TIMESTAMPTZ
+• updated_at TIMESTAMPTZ
+• Examples: ANPR_ONLY, VEHICLE_ANPR, EVENT_TRIGGERED, FORENSIC.
+
+13. TABLE: ai_models
+--------------------
+• model_id UUID PK
+• name VARCHAR(150)
+• version VARCHAR(80)
+• model_hash VARCHAR(128)
+• model_type VARCHAR(80)
+• artifact_uri TEXT
+• framework VARCHAR(80)
+• status VARCHAR(30)
+• benchmark_metadata JSONB
+• created_at TIMESTAMPTZ
+• Only approved model versions may be assigned to production analytics profiles.
+
+14. TABLE: vehicle_observations
+-------------------------------
+• observation_id UUID PK
+• camera_id UUID FK
+• occurred_at TIMESTAMPTZ NOT NULL
+• plate_raw VARCHAR(80)
+• plate_normalized VARCHAR(80)
+• vehicle_class VARCHAR(60)
+• vehicle_color VARCHAR(60)
+• make_model VARCHAR(120)
+• direction VARCHAR(30)
+• lane VARCHAR(30)
+• bbox JSONB
+• detection_confidence NUMERIC(5,4)
+• ocr_confidence NUMERIC(5,4)
+• model_id UUID FK
+• evidence_object_id UUID NULL
+• event_id UUID
+• metadata JSONB
+• created_at TIMESTAMPTZ
+• Indexes: plate_normalized, occurred_at DESC, camera_id + occurred_at DESC, district through camera join.
+• Partitioning: consider time-based partitioning when observation volume becomes large.
+
+15. PLATE NORMALIZATION
+-----------------------
+• Store OCR exactly as returned in plate_raw.
+• plate_normalized is derived and reproducible.
+• Normalization may uppercase, remove whitespace/punctuation and apply controlled OCR correction rules.
+• Never overwrite plate_raw.
+• Fuzzy matching must retain the original strings and matching confidence/reason codes.
+
+16. TABLE: watchlists
+---------------------
+• watchlist_id UUID PK
+• name VARCHAR(150)
+• source_type VARCHAR(50)
+• entity_type VARCHAR(50)
+• authorization_scope JSONB
+• status VARCHAR(30)
+• last_sync_at TIMESTAMPTZ
+• created_at TIMESTAMPTZ
+• updated_at TIMESTAMPTZ
+
+17. TABLE: watchlist_entries
+----------------------------
+• watchlist_entry_id UUID PK
+• watchlist_id UUID FK
+• external_reference VARCHAR(200)
+• identifier_type VARCHAR(50)
+• identifier_normalized VARCHAR(150)
+• entity_attributes JSONB
+• valid_from TIMESTAMPTZ
+• valid_until TIMESTAMPTZ
+• status VARCHAR(30)
+• source_updated_at TIMESTAMPTZ
+• Indexes: watchlist_id, identifier_type + identifier_normalized.
+
+18. TABLE: watchlist_matches
+----------------------------
+• match_id UUID PK
+• observation_id UUID FK
+• watchlist_entry_id UUID FK NULL
+• source_watchlist_id UUID FK
+• match_type VARCHAR(50)
+• match_confidence NUMERIC(5,4)
+• reason_codes JSONB
+• status VARCHAR(30) — POSSIBLE/CONFIRMED/REJECTED
+• reviewed_by UUID NULL
+• reviewed_at TIMESTAMPTZ NULL
+• created_at TIMESTAMPTZ
+• Never treat a possible match as an established criminal identity.
+
+19. TABLE: alerts
+-----------------
+• alert_id UUID PK
+• alert_type VARCHAR(80)
+• severity VARCHAR(30)
+• source_event_id UUID
+• source_observation_id UUID NULL
+• match_id UUID NULL
+• title VARCHAR(250)
+• description TEXT
+• confidence NUMERIC(5,4)
+• status VARCHAR(30)
+• assigned_to UUID NULL
+• investigation_id UUID NULL
+• created_at TIMESTAMPTZ
+• acknowledged_at TIMESTAMPTZ NULL
+• closed_at TIMESTAMPTZ NULL
+• closure_reason TEXT NULL
+• Indexes: status + severity, created_at DESC, assigned_to.
+
+20. TABLE: investigations
+-------------------------
+• investigation_id UUID PK
+• case_reference VARCHAR(100) UNIQUE
+• title VARCHAR(250)
+• status VARCHAR(30)
+• priority VARCHAR(30)
+• created_by UUID FK
+• assigned_to UUID NULL
+• opened_at TIMESTAMPTZ
+• closed_at TIMESTAMPTZ NULL
+• notes TEXT
+• scope JSONB
+• created_at TIMESTAMPTZ
+• updated_at TIMESTAMPTZ
+
+21. TABLE: investigation_targets
+--------------------------------
+• target_id UUID PK
+• investigation_id UUID FK
+• target_type VARCHAR(50)
+• identifier VARCHAR(150)
+• normalized_identifier VARCHAR(150)
+• metadata JSONB
+• created_at TIMESTAMPTZ
+• Indexes: investigation_id, normalized_identifier.
+
+22. TABLE: route_links
+----------------------
+• route_link_id UUID PK
+• investigation_id UUID FK NULL
+• from_observation_id UUID FK
+• to_observation_id UUID FK
+• travel_time_seconds INTEGER
+• road_distance_meters NUMERIC
+• route_confidence NUMERIC(5,4)
+• reason_codes JSONB
+• status VARCHAR(30)
+• created_at TIMESTAMPTZ
+• Never store an inferred link without the observations and reason codes that support it.
+
+23. TABLE: evidence_objects
+---------------------------
+• evidence_object_id UUID PK
+• case_id UUID NULL
+• source_camera_id UUID FK
+• source_vms_id UUID NULL
+• capture_started_at TIMESTAMPTZ
+• capture_ended_at TIMESTAMPTZ NULL
+• object_uri TEXT
+• thumbnail_uri TEXT NULL
+• sha256 VARCHAR(64)
+• media_type VARCHAR(80)
+• size_bytes BIGINT
+• model_id UUID NULL
+• exported_by UUID NULL
+• exported_at TIMESTAMPTZ NULL
+• metadata JSONB
+• created_at TIMESTAMPTZ
+• Object content should live in object storage, not PostgreSQL.
+
+24. TABLE: users / roles / permissions
+--------------------------------------
+• users: user_id, external_subject, name, email/identifier, status, department_id, last_login_at, created_at, updated_at.
+• roles: role_id, name, description, status.
+• permissions: permission_id, resource, action, scope_type.
+• user_roles: user_id, role_id.
+• role_permissions: role_id, permission_id.
+• user_scopes: user_id, scope_type, scope_value.
+• Suggested roles: SUPER_ADMIN, STATE_COMMAND, DISTRICT_COMMAND, DEPARTMENT_ADMIN, INVESTIGATOR, OPERATOR, AUDITOR, READ_ONLY.
+
+25. TABLE: audit_events
+-----------------------
+• audit_event_id UUID PK
+• actor_user_id UUID NULL
+• action VARCHAR(100)
+• resource_type VARCHAR(80)
+• resource_id UUID NULL
+• request_id VARCHAR(100)
+• ip_address INET NULL
+• user_agent TEXT NULL
+• before_state JSONB NULL
+• after_state JSONB NULL
+• reason TEXT NULL
+• occurred_at TIMESTAMPTZ
+• Audit records should be append-only to application roles. Administrative access to audit storage must itself be controlled and logged.
+
+26. API STRUCTURE
+-----------------
+• Base URL: /api/v1
+• Auth: /auth/login, /auth/refresh, /auth/logout, /auth/me
+• Cameras: /cameras, /cameras/{id}, /cameras/{id}/validate, /cameras/{id}/health
+• Streams: /streams/{cameraId}, /streams/{cameraId}/session
+• Events: /events, /events/{id}
+• Vehicles: /vehicles/search, /vehicles/{plate}/observations
+• Routes: /routes/reconstruct
+• Watchlists: /watchlists, /watchlists/{id}/entries, /watchlists/matches
+• Alerts: /alerts, /alerts/{id}/acknowledge, /alerts/{id}/assign, /alerts/{id}/close
+• Investigations: /investigations, /investigations/{id}, /investigations/{id}/targets
+• Evidence: /evidence/{id}, /evidence/{id}/download, /evidence/export
+• GIS: /gis/cameras, /gis/observations
+• Admin: /users, /roles, /permissions, /integrations
+• Health: /health/live, /health/ready, /health/services
+• Audit: /audit
+
+27. API RESPONSE CONTRACT
+-------------------------
+• Success example: { data, meta, requestId }.
+• List response: data[], meta.page, meta.pageSize, meta.total, meta.nextCursor when cursor pagination is used.
+• Error response: { error: { code, message, details }, requestId }.
+• Never expose database exception strings, credentials, internal stack traces or secret references to clients.
+• Use HTTP status codes consistently: 200/201/202/204 for success; 400 validation; 401 unauthenticated; 403 unauthorized; 404 missing; 409 conflict; 422 semantic validation; 429 rate limit; 500/503 server/dependency failure.
+
+28. VEHICLE SEARCH API EXAMPLE
+------------------------------
+• GET /api/v1/vehicles/{plate}/observations?from=...&to=...&district=...&cameraId=...
+• Response should return normalized target, total observations, ordered sightings, route links, confidence and evidence references.
+• Search must enforce authorization scope before returning observations.
+• Large result sets should use cursor pagination.
+
+29. ROUTE RECONSTRUCTION API
+----------------------------
+• POST /api/v1/routes/reconstruct
+• Request: target identifier, time range, optional camera/district filters and correlation policy.
+• Response: route_id, ordered observation IDs, route links, route confidence, uncertainty flags and gaps.
+• Route computation should be reproducible from stored observations and a versioned correlation policy.
+
+30. ALERT API LIFECYCLE
+-----------------------
+• CREATE → NEW → ACKNOWLEDGED → ASSIGNED → ESCALATED/IN_REVIEW → RESOLVED/CLOSED.
+• Every state transition creates an audit event.
+• Closing an alert should require a closure reason where configured.
+• Critical alerts may require assignment or acknowledgement within an operational SLA.
+
+31. EVENT BUS TOPICS
+--------------------
+• camera.health.changed
+• stream.status.changed
+• vehicle.detected
+• anpr.observation.created
+• watchlist.match.possible
+• alert.created
+• alert.updated
+• evidence.created
+• investigation.updated
+• audit.event.created
+• Use a stable event envelope with event_id, event_type, occurred_at, producer, schema_version and payload.
+• Consumers must be idempotent using event_id.
+
+32. EVENT ENVELOPE
+------------------
+• event_id UUID
+• event_type VARCHAR
+• schema_version VARCHAR
+• producer VARCHAR
+• occurred_at TIMESTAMPTZ
+• correlation_id UUID
+• causation_id UUID NULL
+• tenant_scope JSONB
+• payload JSONB
+• Do not put large video files inside Kafka messages. Store media in object storage and publish references.
+
+33. CACHE STRATEGY
+------------------
+• Redis may cache camera metadata, permissions, active health state, short-lived search filters and session-related state.
+• Do not cache security decisions longer than the configured policy allows.
+• Do not use Redis as the permanent source of truth.
+• Cache keys should include scope where permissions affect the result.
+• Use TTLs and explicit invalidation for camera/configuration changes.
+
+34. FILE / MEDIA STORAGE
+------------------------
+• PostgreSQL stores metadata; object storage stores video clips, snapshots, exports and report artifacts.
+• Object path example: evidence/{year}/{month}/{case_id}/{evidence_id}.{ext}
+• Use private buckets/containers by default.
+• Use short-lived signed URLs for authorized downloads where appropriate.
+• Store SHA-256 hash and media metadata in evidence_objects.
+• Retention/deletion must be policy-driven and auditable.
+
+35. AUTHENTICATION
+------------------
+• Preferred production direction: government-approved SSO/identity provider with MFA.
+• Prototype may use JWT access tokens with short expiry and refresh-token rotation.
+• Access token should carry subject and minimal claims; detailed permissions remain server-side.
+• Service-to-service authentication should use workload/service identities rather than shared passwords.
+
+36. AUTHORIZATION
+-----------------
+• Enforce RBAC plus scope checks.
+• Example: an OPERATOR may view only cameras assigned to the operator's department/district.
+• An INVESTIGATOR may search observations only within authorized scope.
+• Evidence export requires an explicit permission.
+• Every sensitive endpoint must call the authorization layer before data access.
+
+37. REQUEST SECURITY
+--------------------
+• Validate all input using typed schemas.
+• Use parameterized SQL/ORM queries.
+• Apply rate limits to authentication, search and export endpoints.
+• Limit upload size and validate file type where uploads exist.
+• Strip secrets from logs.
+• Use correlation IDs for traceability.
+• Do not expose internal service endpoints to the public network.
+
+38. ERROR HANDLING
+------------------
+• Define domain error codes such as CAMERA_UNAVAILABLE, STREAM_TIMEOUT, WATCHLIST_UNAUTHORIZED, EVIDENCE_NOT_FOUND, ROUTE_INSUFFICIENT_DATA.
+• Return actionable user-safe messages.
+• Log technical details server-side with request_id.
+• Retry only transient dependency failures.
+• Use exponential backoff with jitter for external services and stream reconnection.
+• Dead-letter failed event messages after configured retry policy.
+
+39. OBSERVABILITY
+-----------------
+• Metrics: request rate, p50/p95/p99 latency, error rate, camera online %, stream reconnects, AI queue depth, AI inference latency, event throughput, Kafka lag, DB latency, storage usage and network throughput.
+• Tracing: API → event → AI → search → alert chain should be traceable with correlation_id.
+• Logs: JSON structured logs with timestamp, service, severity, request_id, correlation_id and safe context.
+• Health endpoints: liveness and readiness must be separate.
+
+40. DATABASE INDEXING
+---------------------
+• High-value indexes: cameras(camera_code), cameras(department_id,status), cameras GIST(location), observations(plate_normalized, occurred_at DESC), observations(camera_id, occurred_at DESC), alerts(status,severity,created_at DESC), watchlist_entries(identifier_type,identifier_normalized), audit_events(occurred_at DESC).
+• Avoid indexing every JSONB field by default.
+• Use EXPLAIN/ANALYZE on production-like search queries before adding indexes.
+• Consider time partitioning for vehicle_observations when volume requires it.
+
+41. SCALABILITY MODEL
+---------------------
+• Stateless API instances scale horizontally behind a load balancer.
+• AI workers scale independently from APIs.
+• Kafka partitions scale event throughput.
+• Search/index nodes scale independently.
+• Object storage scales separately from metadata database.
+• Regional gateways reduce WAN/video pressure and isolate camera failures.
+• Do not centralize all raw video merely to prove centralization.
+
+42. DEPLOYMENT LAYERS
+---------------------
+• Prototype: Docker Compose — API, PostgreSQL/PostGIS, Redis, Kafka-compatible broker, object storage, AI worker and web app.
+• Regional: Kubernetes — multiple API replicas, gateway workers, AI GPU workers, broker cluster, database HA, object storage.
+• State platform: centralized metadata/search/event/alert services with regional ingestion and AI.
+• All deployments require health probes, resource limits, secrets injection, persistent volumes and backup strategy.
+
+43. BACKUP / RECOVERY
+---------------------
+• Back up PostgreSQL metadata and configuration according to required RPO.
+• Replicate critical evidence according to approved retention policy.
+• Test restoration rather than merely creating backups.
+• Document RPO/RTO once government infrastructure/SLA requirements are confirmed.
+• Do not invent production RPO/RTO numbers in the prototype.
+
+44. DATABASE MIGRATIONS
+-----------------------
+• Use Alembic migrations.
+• Every schema change must have upgrade and downgrade behavior where safe.
+• Migration order must be deterministic.
+• Never modify production tables manually without a recorded migration.
+• Seed data must be clearly separated from production data.
+
+45. TESTING
+-----------
+• Unit: normalization, confidence rules, authorization, route constraints and validators.
+• Integration: PostgreSQL/PostGIS, Redis, Kafka, object storage and external adapter contracts.
+• API: authentication, permissions, pagination, errors and idempotency.
+• E2E: simulated feed → AI → observation → search → route → watchlist → alert → evidence → audit.
+• Load: 10/30/50/100+ feeds and increasing event rates.
+• Failure: camera disconnect, reconnect storm, AI worker crash, Kafka lag, database failover, object storage failure and network interruption.
+
+46. BACKEND ACCEPTANCE CRITERIA
+-------------------------------
+• AC-B01 All core tables migrate successfully from a clean database.
+• AC-B02 Camera registration creates valid GIS metadata and stream configuration.
+• AC-B03 A simulated feed produces searchable vehicle observations.
+• AC-B04 Plate normalization is deterministic and preserves raw OCR.
+• AC-B05 Vehicle search returns authorized observations with pagination.
+• AC-B06 Route reconstruction produces explainable links and confidence.
+• AC-B07 Watchlist match produces a possible-match record without asserting identity.
+• AC-B08 Alert lifecycle is auditable.
+• AC-B09 Evidence export produces metadata and SHA-256.
+• AC-B10 Unauthorized access returns 403 and creates an appropriate security audit event where configured.
+• AC-B11 Individual camera/AI worker failure does not crash the API.
+• AC-B12 Event consumers remain idempotent after duplicate delivery.
+• AC-B13 API and event contracts are documented in OpenAPI/schema files.
+• AC-B14 Benchmark results are reproducible.
+
+47. SEED / DEMO DATA
+--------------------
+• Seed departments representing the challenge-style environment: Police, Health, GSRTC, Panchayat and Municipal.
+• Seed multiple districts/sites/cameras without hard-coding the application around those names.
+• Seed simulated observations with realistic timestamps and confidence values.
+• Seed a test watchlist explicitly labeled DEMO_ONLY.
+• Seed at least one multi-camera vehicle route and one intentionally ambiguous route to demonstrate uncertainty handling.
+• Never seed real personal or government-sensitive data.
+
+48. ENVIRONMENT VARIABLES
+-------------------------
+• APP_ENV
+• DATABASE_URL
+• REDIS_URL
+• KAFKA_BROKERS
+• OBJECT_STORAGE_ENDPOINT
+• OBJECT_STORAGE_BUCKET
+• OBJECT_STORAGE_ACCESS_KEY — injected secret
+• OBJECT_STORAGE_SECRET_KEY — injected secret
+• JWT_ISSUER / OIDC_ISSUER
+• OIDC_CLIENT_ID
+• OIDC_CLIENT_SECRET — injected secret
+• OTEL_EXPORTER_OTLP_ENDPOINT
+• LOG_LEVEL
+• All secret values must be provided through a secure environment/secret manager, not committed to source control.
+
+49. PROJECT DIRECTORY
+---------------------
+• backend/
+•   app/
+•     api/
+•     core/
+•     db/
+•     models/
+•     schemas/
+•     services/
+•     repositories/
+•     events/
+•     auth/
+•     integrations/
+•     workers/
+•     observability/
+•   migrations/
+•   tests/
+•     unit/
+•     integration/
+•     e2e/
+•     load/
+•   scripts/
+•   configs/
+•   Dockerfile
+•   pyproject.toml
+•   alembic.ini
+•   README.md
+
+50. DEFINITION OF DONE
+----------------------
+• Schema is migrated from an empty database.
+• All foreign keys and important indexes exist.
+• OpenAPI documentation is generated.
+• Authentication and authorization are enforced.
+• Vehicle search and route reconstruction work end-to-end.
+• Events are published/consumed idempotently.
+• Evidence is stored outside PostgreSQL with metadata and hash.
+• Audit logging covers sensitive operations.
+• Health/metrics/tracing are available.
+• Automated tests pass.
+• Load/failure tests have measured results.
+• No secrets, real credentials or unauthorized government data are committed.
+• Deployment can be reproduced from documented commands.
+
+51. IMPORTANT BACKEND RULES
+---------------------------
+• Do not build one giant FastAPI file.
+• Do not make the frontend query the database directly.
+• Do not put video binaries in PostgreSQL.
+• Do not put video binaries in Kafka.
+• Do not store plaintext camera/VMS credentials.
+• Do not treat AI output as ground truth.
+• Do not let users bypass authorization through alternate endpoints.
+• Do not hard-code department/camera names.
+• Do not claim direct government database access without an authorized API/integration.
+• Do not claim 80,000-camera production capacity without measured load testing.
+• Keep the domain model stable even if the AI model, VMS vendor or search engine changes.
+
+52. BACKEND BUILD ORDER
+-----------------------
+• P0: PostgreSQL/PostGIS schema + migrations.
+• P0: Auth/RBAC + camera registry.
+• P0: Camera/stream configuration + health.
+• P0: Vehicle observation + ANPR event pipeline.
+• P0: Search + route reconstruction.
+• P0: Alert + evidence + audit.
+• P1: Kafka event bus hardening.
+• P1: Watchlist adapters.
+• P1: Redis caching.
+• P1: OpenSearch for high-volume search.
+• P1: Observability + load testing.
+• P2: Advanced person analytics, anomaly analytics, additional VMS adapters and future centralized VMS capabilities.

@@ -1,0 +1,259 @@
+GUJARAT POLICE INNOVATION CHALLENGE 2026
+UI/UX DESIGN BRIEF — V2.0
+Anti-AI-Template / Operational Command Center Direction
+
+1. DESIGN DIRECTION
+-------------------
+• The website should NOT look like a typical AI-generated SaaS website.
+• The design language should feel like a real government-grade command and investigation product: restrained, technical, spatial, information-dense and operational.
+• Visual personality should come from the product itself — maps, camera feeds, timelines, evidence, system status and investigative workflows — not from trendy decoration.
+• Primary goal: make the interface believable enough that a police operator could actually use it.
+
+2. WHAT TO AVOID — AI-SITE VISUAL CLICHÉS
+-----------------------------------------
+• Do not use a pure-white background as the dominant visual identity. Use a neutral operational canvas with subtle tonal variation.
+• Do not use rainbow coloring as a design system. Color should be semantic and functional.
+• Do not use large generic drop shadows. Prefer borders, elevation through spacing, and very subtle depth only where necessary.
+• Do not force three feature cards in one row. Use layouts based on information priority.
+• Do not use dozens of emojis. Production UI should use icons and real data; emojis should be essentially absent.
+• Do not make liquid glass a visual identity. Use normal solid surfaces; reserve translucency for a few overlays when technically useful.
+• Do not use em dashes as a deliberate stylistic gimmick. Normal product copy is preferred.
+• Do not use a fashionable font simply because it is fashionable. Use a highly readable UI font chosen for the final implementation.
+• Do not put colored left stripes on every card. Status colors should appear only where they communicate state.
+• Do not use fake testimonials.
+• Do not build the interface out of repetitive bento cards.
+• Do not use harsh gradients as decoration.
+• Do not use generic purple/black neon AI branding.
+• Do not use terminal windows as decorative components.
+• Do not repeatedly use “It’s not X, it’s Y” copy.
+• Do not use checkmark bullets everywhere.
+• Do not include pricing tiers in the operational police product.
+• Do not use decorative radial orbs.
+• Do not use dot-grid backgrounds.
+• Do not use sparkle icons as decoration.
+• Do not use animated arrows everywhere.
+• Do not add hover animations to every component.
+• Do not use neon colors as the main palette.
+• Do not make the interface pastel for the sake of being trendy.
+• Do not intentionally omit Terms of Service or Privacy Policy if the public-facing website requires them.
+• Do not use “no skeleton loaders” as a visual rule. Loading behavior should be selected based on context.
+• Do not make the product look like a landing-page template.
+
+3. VISUAL PRINCIPLES
+--------------------
+• Hierarchy over decoration.
+• Information density over marketing blocks.
+• Real-world spatial relationships over abstract cards.
+• Operational clarity over visual novelty.
+• Evidence over effects.
+• Calm surfaces with strong typography and clear state changes.
+• Color communicates status, not personality.
+• Animation communicates change, not entertainment.
+• Every decorative element must have a product reason.
+
+4. COLOR SYSTEM
+---------------
+• Base: restrained neutral surfaces — warm/cool off-white, light gray, graphite and near-black.
+• Primary accent: one controlled institutional accent, preferably a deep blue/indigo or restrained purple depending on the final brand direction.
+• Semantic status colors: green for healthy/confirmed, amber for review/degraded, red for critical/error, blue for informational state.
+• Use accent color sparingly for active navigation, selected camera, route highlights and primary actions.
+• Do not use rainbow gradients.
+• Do not use neon colors across the interface.
+• Do not use pastel colors as a decorative theme.
+• Dark surfaces may be used for command/navigation areas if they improve hierarchy, but the entire application should not become a generic purple/black AI dashboard.
+
+5. TYPOGRAPHY
+-------------
+• Choose one highly readable production UI typeface and use it consistently.
+• Inter, Geist or Space Grotesk may be used if they genuinely improve readability, but they are not a design requirement.
+• Use typography hierarchy through size, weight and spacing rather than oversized marketing headlines.
+• Operator-facing text should be concise and factual.
+• Metadata should be visually subordinate but readable.
+
+6. SURFACE / COMPONENT LANGUAGE
+-------------------------------
+• Prefer solid surfaces with 1px borders and restrained elevation.
+• Use soft radius only where it improves grouping. Avoid excessive rounded cards.
+• Use shadows only for floating menus, modals, popovers and elevated overlays.
+• Use cards when grouping information is useful — not because every section needs a card.
+• Tables, timelines, maps and split panes should be allowed to remain open on the page.
+• Do not put a border and shadow around every element.
+
+7. INFORMATION ARCHITECTURE
+---------------------------
+• Primary navigation: Command Center, Live Cameras, Vehicle Investigation, Alerts, Map, Evidence, Camera Registry, System Health, Administration.
+• Primary global action: search a vehicle/entity.
+• Secondary actions: filter, inspect, acknowledge, assign, export.
+• The interface should guide users from detection → evidence → decision.
+• Keep operational information visible without forcing users through marketing-style sections.
+
+8. COMMAND CENTER
+-----------------
+• Use a functional operations layout rather than a marketing bento.
+• Top row: global search, date/time context, system health, user/security status.
+• Main area: live alert queue + GIS/map + selected camera/event.
+• Secondary area: camera health, AI processing, recent investigations and system metrics.
+• Use resizable panels or a grid only where it improves operator workflow.
+• Avoid a wall of giant metric cards.
+
+9. VEHICLE INVESTIGATION
+------------------------
+• This is the signature screen.
+• Search field should be prominent but not oversized.
+• Left: observation timeline.
+• Center: map/route.
+• Right: evidence and vehicle details.
+• Route segments should reflect actual observation confidence.
+• Camera nodes should show timestamp, camera ID/name, location and confidence.
+• Evidence should be one click away.
+• Use real-looking tables and timelines instead of decorative cards.
+
+10. LIVE CAMERA VIEW
+--------------------
+• Use a practical camera wall/grid.
+• Each tile should prioritize video, camera identity, timestamp, health and relevant AI status.
+• Keep overlays compact.
+• Do not add glass, glow, neon borders or animated decorations to every camera.
+• Different states: LIVE, REPLAY, DEGRADED, OFFLINE should be explicit.
+
+11. MAP / GIS
+-------------
+• The map is a core product surface, not background decoration.
+• Use restrained map colors so routes and alerts are visually prominent.
+• Camera markers should be simple and scalable.
+• Use clustering at low zoom.
+• Selected routes can use one strong accent color.
+• Use side panels for filters and event details instead of floating decorative widgets.
+
+12. ALERT EXPERIENCE
+--------------------
+• An alert must answer: what, where, when, why and evidence.
+• Use semantic severity colors only.
+• Primary actions: Acknowledge, Assign, Escalate, Close.
+• Show confidence numerically or descriptively.
+• Show source camera and timestamp.
+• Do not use glowing red borders or flashing effects as the primary alert mechanism.
+
+13. EVIDENCE / INVESTIGATION
+----------------------------
+• Evidence screen should feel forensic and precise.
+• Show source, timestamp, case ID, operator, hash and processing metadata.
+• Use a clean evidence viewer with supporting metadata.
+• Terminal-style metadata may exist in a developer/admin diagnostic view, but should not dominate the public product UI.
+• Reports should look like operational records, not SaaS marketing PDFs.
+
+14. SYSTEM HEALTH
+-----------------
+• Use tables, compact status rows and charts.
+• Metrics should be meaningful: camera availability, stream latency, AI queue depth, event throughput, database health, storage and network.
+• Use status indicators with labels, not color alone.
+• Do not turn health into decorative circular gauges everywhere.
+
+15. MICRO-INTERACTIONS
+----------------------
+• Motion should communicate state change.
+• Use short transitions for navigation, panel opening, filtering and selection.
+• Hover may slightly change border, background or elevation.
+• Do not animate every card.
+• Do not use animated arrows as a recurring visual motif.
+• Do not use pulsing effects unless the state is genuinely urgent.
+
+16. LOADING / EMPTY / ERROR
+---------------------------
+• Choose the loading pattern based on context.
+• For a table, use a compact progress indicator or contextual loading row.
+• For a video connection, use “Connecting to camera…” with connection status.
+• For a search, show query progress and result count when available.
+• Skeleton loaders are optional — not banned — but should not become a decorative pattern.
+• Errors should explain the problem and next action.
+
+17. ICONOGRAPHY
+---------------
+• Use one coherent icon family such as Lucide if it fits the implementation.
+• Icons should support recognition and navigation, not act as decoration.
+• Do not place sparkle icons next to every AI label.
+• Use familiar domain icons: camera, vehicle, map pin, route, alert, shield, database, server, search, evidence.
+
+18. EMOJI POLICY
+----------------
+• Do not use the requested ~70 emoji treatment in the actual product.
+• Production police software should use professional iconography and labels.
+• Emoji can be reserved for internal prototype notes or optional empty-state experiments, but should not be part of the main design system.
+
+19. MARKETING / LANDING PAGE
+----------------------------
+• If a public landing page is needed, keep it separate from the operational application.
+• Do not use fake testimonials.
+• Do not use fabricated government endorsements.
+• Do not use fake customer logos.
+• Do not show invented pricing.
+• If deployment tiers are mentioned, describe them as Pilot / Regional / State deployment stages rather than SaaS pricing.
+• Terms of Service and Privacy Policy should exist where legally/product appropriate; do not intentionally omit them.
+
+20. RESPONSIVE DESIGN
+---------------------
+• Desktop-first because the command center is intended for large screens.
+• At tablet widths, stack map/timeline/evidence panels logically.
+• At mobile widths, prioritize alerts, vehicle search, camera status and evidence.
+• Do not simply shrink desktop cards into a mobile column.
+
+21. ACCESSIBILITY
+-----------------
+• Use sufficient contrast.
+• Do not communicate state through color alone.
+• Provide keyboard focus states.
+• Use semantic headings and labels.
+• Provide accessible names for icon-only buttons.
+• Respect reduced-motion preferences.
+• Keep touch targets practical on smaller devices.
+
+22. DESIGN SYSTEM TOKENS
+------------------------
+• Spacing: 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64.
+• Radius: small and medium only; avoid excessive pill styling.
+• Border: subtle neutral default; accent for selected state.
+• Shadow: reserved for floating/elevated surfaces.
+• Color: neutral base + controlled primary + semantic status palette.
+• Motion: 120–220 ms for routine interaction; no gratuitous animation.
+
+23. ANTI-TEMPLATE CHECKLIST
+---------------------------
+• Does this component exist because the product needs it?
+• Could this card be replaced by a table, timeline or open layout?
+• Is this color communicating a real state?
+• Is this animation communicating a real change?
+• Would a police operator understand it without marketing copy?
+• Does this look like a CCTV investigation platform rather than an AI startup landing page?
+• Remove anything that exists only because a trendy UI template usually contains it.
+
+24. FINAL DESIGN CHARACTER
+--------------------------
+• Professional.
+• Operational.
+• Spatial.
+• Evidence-first.
+• Technically credible.
+• Calm under pressure.
+• Information-dense without being cluttered.
+• Distinctive through product structure rather than decorative AI clichés.
+• The strongest visual identity should come from the relationship between live video, GIS, vehicle observations, timelines, alerts and evidence.
+
+25. DESIGN HANDOFF
+------------------
+• Figma component library.
+• Desktop command center.
+• Vehicle investigation flow.
+• Live camera wall.
+• GIS/map states.
+• Alert states.
+• Evidence viewer.
+• Camera registry.
+• System health.
+• Administration/RBAC.
+• Responsive layouts.
+• Loading/empty/error states.
+• Accessibility states.
+• Motion specification.
+• Color and typography tokens.
+• Realistic mock data clearly marked as simulated.
+• Separate public landing-page components from operational application components.
