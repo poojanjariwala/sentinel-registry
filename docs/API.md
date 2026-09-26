@@ -63,6 +63,7 @@ rejected in the report, never partially committed. Re-committing a file is idemp
 | GET | `/streams/hls/{sid}/{sess}/index.m3u8` | session | Playlist (rewritten, signed segment URLs) |
 | GET | `/streams/hls/{sid}/{sess}/{token}/seg/{name}` | signed token | Segment proxy; expired/invalid → 403, rolled-off → 404 |
 | POST | `/streams/admin/sync-sentinel` | user.manage | Pull Sentinel `/api/ingest` catalogue into stream_sources |
+| POST | `/streams/admin/sync-grid` | user.manage | Sync the real Gujarat Police Camera Grid catalogue (`cameras.json` → cameras `GP-CAMxx` + HLS stream_sources, VMS `GP-GRID`); idempotent, re-runnable; vanished entries disabled |
 | POST | `/streams/admin/seed-simulated` | user.manage | Seed demo streams across two VMS systems + demo watchlist |
 
 ### Vehicle intelligence / events / watchlist / alerts
@@ -75,11 +76,26 @@ rejected in the report, never partially committed. Re-committing a file is idemp
 
 Background workers (toggle `ENABLE_MODULE2_WORKERS`): stream health prober (45 s)
 and the demo ANPR engine (8 s) that writes observations, tags events and raises
-watchlist alerts. Simulated rows carry `engine='simulated'`.
+watchlist alerts. Simulated rows carry `engine='simulated'`. The ANPR engine runs
+only on `protocol='SIM'` streams — real feeds (e.g. the GP-GRID cameras) never
+receive fabricated observations (see ADR-007).
+
+### Real feeds (Sentinel Camera Grid)
+
+Grid origins are password-gated: the api container authenticates once
+(`GRID_EMAIL`/`GRID_PASSWORD` in `.env`) and holds the session cookie server-side;
+browsers only ever receive signed gateway URLs (ADR-005/ADR-007). Grid auth
+failures surface as `GRID_AUTH_FAILED` (502) on playback and `GRID_AUTH_EXPIRED`
+in health-probe details; watch-time quota exhaustion surfaces as `GRID_COOLDOWN`
+with an automatic 15-minute backoff. Grid playlists are rolling live windows:
+the origin publishes 12-hour AES-128-encrypted looping archives, which the
+gateway converts to ~4-minute live windows ending at the real-time position,
+with the decryption key proxied through a signed route.
 
 ## Audit coverage
 
 `LOGIN_SUCCESS`, `LOGIN_FAILED`, `LOGOUT`, `CAMERA_CREATE`, `CAMERA_UPDATE`,
 `CAMERA_DELETE`, `CAMERA_IMPORT`, `CAMERA_EXPORT`, `COVERAGE_RUN_CREATE`,
-`DEPARTMENT_CREATE`, `USER_CREATE`. Records include actor, IP, user-agent,
+`DEPARTMENT_CREATE`, `USER_CREATE`, `SENTINEL_SYNC`, `GRID_SYNC`,
+`STREAM_SEED_SIM`, `STREAM_WATCH_START/STOP`. Records include actor, IP, user-agent,
 request id and before/after state. Append-only.

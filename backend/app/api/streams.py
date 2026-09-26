@@ -13,7 +13,8 @@ from app.models.module2 import StreamSource, ViewerSession
 from app.models.user import User
 from app.services import audit as audit_svc
 from app.services.camera_service import user_department_filter
-from app.services.hls_service import fetch_playlist, fetch_segment, verify_segment_token
+from app.services.grid_sync import sync_cameras_from_grid
+from app.services.hls_service import OriginSpec, fetch_key, fetch_playlist, fetch_segment, verify_segment_token
 from app.services.sentinel_adapter import seed_simulated_feeds, seed_watchlist, sync_catalogue
 from app.services.stream_service import (
     get_stream_scoped,
@@ -107,19 +108,43 @@ async def hls_playlist(stream_id: str, session_id: str, db: Session = Depends(ge
     s = db.get(StreamSource, stream_id)
     if not s:
         raise SentinelError("STREAM_NOT_FOUND", "Stream not found", 404)
-    body, headers = await fetch_playlist(s, session_id)
+    spec = OriginSpec.from_source(s)
+    db.close()  # release the pooled connection BEFORE upstream I/O
+    body, headers = await fetch_playlist(spec, session_id)
     return Response(content=body, media_type="application/vnd.apple.mpegurl", headers=headers)
 
 
 @router.get("/hls/{stream_id}/{session_id}/{token}/seg/{name}")
 async def hls_segment(stream_id: str, session_id: str, token: str, name: str, db: Session = Depends(get_db)):
+    sess = db.get(ViewerSession, session_id)
+    if not sess or not sess.active or sess.stream_id != stream_id:
+        raise SentinelError("SESSION_INVALID", "Viewer session is invalid or expired", 403)
     if not verify_segment_token(stream_id, name, session_id, token):
         raise SentinelError("SEGMENT_TOKEN_INVALID", "Segment link expired", 403)
     s = db.get(StreamSource, stream_id)
     if not s:
         raise SentinelError("STREAM_NOT_FOUND", "Stream not found", 404)
-    data, headers = await fetch_segment(s, name)
+    spec = OriginSpec.from_source(s)
+    db.close()  # release the pooled connection BEFORE upstream I/O
+    data, headers = await fetch_segment(spec, name)
     return Response(content=data, media_type=headers.get("content-type", "video/mp2t"))
+
+
+@router.get("/hls/{stream_id}/{session_id}/{token}/key/{name}")
+async def hls_key(stream_id: str, session_id: str, token: str, name: str, db: Session = Depends(get_db)):
+    """Proxy an AES-128 decryption key for grid feeds (signed, session-bound)."""
+    sess = db.get(ViewerSession, session_id)
+    if not sess or not sess.active or sess.stream_id != stream_id:
+        raise SentinelError("SESSION_INVALID", "Viewer session is invalid or expired", 403)
+    if not verify_segment_token(stream_id, name, session_id, token):
+        raise SentinelError("KEY_TOKEN_INVALID", "Key link expired", 403)
+    s = db.get(StreamSource, stream_id)
+    if not s:
+        raise SentinelError("STREAM_NOT_FOUND", "Stream not found", 404)
+    spec = OriginSpec.from_source(s)
+    db.close()  # release the pooled connection BEFORE upstream I/O
+    data = await fetch_key(spec, name)
+    return Response(content=data, media_type="application/octet-stream")
 
 
 @router.post("/admin/sync-sentinel")
@@ -127,6 +152,20 @@ def sync_sentinel(request: Request, user: User = Depends(require_perm("user", "m
     result = sync_catalogue(db)
     audit_svc.record(
         db, "SENTINEL_SYNC", "stream_catalogue", None,
+        after_state=result, actor_user_id=user.user_id, actor_label=user.email,
+        ip_address=request.client.host if request.client else None,
+    )
+    db.commit()
+    return {"data": result, "meta": {}, "requestId": request_id_var.get()}
+
+
+@router.post("/admin/sync-grid")
+def sync_grid(request: Request, user: User = Depends(require_perm("user", "manage")), db: Session = Depends(get_db)):
+    """Sync the real Gujarat Police Camera Grid catalogue: upsert cameras +
+    HLS stream_sources from cameras.json (idempotent; re-runnable)."""
+    result = sync_cameras_from_grid(db)
+    audit_svc.record(
+        db, "GRID_SYNC", "stream_catalogue", None,
         after_state=result, actor_user_id=user.user_id, actor_label=user.email,
         ip_address=request.client.host if request.client else None,
     )

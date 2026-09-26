@@ -37,6 +37,9 @@ class StreamSource(Base, TimestampMixin):
     last_probe_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     analytics_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Optional per-source origin auth (cookie/bearer/headers). Grid feeds keep
+    # credentials centrally in grid_client instead; this is for other VMSes.
+    auth_json: Mapped[dict | None] = mapped_column("auth_json", JSONB, nullable=True)
 
 
 class StreamHealthEvent(Base):

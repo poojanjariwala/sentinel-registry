@@ -114,6 +114,8 @@ def seed_simulated_feeds(db: Session) -> dict:
 
     Sources point at the local mediagen HLS scenes (cam1..cam3) which the
     gateway proxies; each scene cycles so multiple cameras share a scene.
+    Only touches SIM VMS markers - real grid feeds (GP-GRID) are never
+    rewritten by the self-heal below.
     """
     created = 0
     cams = db.execute(
@@ -192,6 +194,9 @@ def tick_simulated_anpr(db: Session, max_new: int = 25) -> dict:
             StreamSource.enabled.is_(True),
             StreamSource.analytics_enabled.is_(True),
             StreamSource.status == "ONLINE",
+            # Honesty guard: simulated ANPR never fabricates observations for
+            # real feeds (HLS/RTSP/ONVIF). Real ANPR is a separate engine (ADR-006).
+            StreamSource.protocol == "SIM",
         )
     ).scalars().all()
     if not streams:

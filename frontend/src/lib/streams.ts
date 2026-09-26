@@ -54,12 +54,19 @@ export function stopOnUnload(sessionId: string | null) {
 }
 
 /**
- * Attach an HLS stream to a video element with auto-reconnect and
+ * Attach an HLS stream to a video element with bounded auto-reconnect and
  * session heartbeat. Stops the session on unmount.
+ *
+ * Grid etiquette (ADR-007): the origin enforces a per-account watch-time
+ * quota, so retries are capped and gateway refusals (quota/auth) surface as
+ * a distinct 'cooldown' state instead of an infinite retry storm.
  */
+export type StreamState = 'connecting' | 'live' | 'error' | 'cooldown' | 'idle'
+const MAX_RETRY_ATTEMPTS = 6
+
 export function useHlsStream(streamId: string | null, enabled = true) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const [state, setState] = useState<'connecting' | 'live' | 'error' | 'idle'>('idle')
+  const [state, setState] = useState<StreamState>('idle')
   const [session, setSession] = useState<WatchInfo | null>(null)
   const sessionRef = useRef<WatchInfo | null>(null)
 
@@ -78,6 +85,14 @@ export function useHlsStream(streamId: string | null, enabled = true) {
     let retry: number | null = null
     let attempt = 0
     setState('connecting')
+
+    const endSession = () => {
+      const s = sessionRef.current
+      if (s) {
+        stopOnUnload(s.session_id)
+        setSession(null)
+      }
+    }
 
     const cleanupHls = () => {
       if (hls) {
@@ -112,8 +127,16 @@ export function useHlsStream(streamId: string | null, enabled = true) {
             hls.on(Hls.Events.ERROR, (_e, data) => {
               if (!data.fatal) return
               console.warn('[hls] fatal', data.type, data.details)
-              setState('error')
               cleanupHls()
+              const status = data.response?.code
+              if (status === 502 || status === 403) {
+                // Gateway refused the upstream (grid quota/auth): retrying
+                // cannot help until the cooldown passes - stop cleanly.
+                setState('cooldown')
+                endSession()
+                return
+              }
+              setState('error')
               scheduleRetry()
             })
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -140,6 +163,12 @@ export function useHlsStream(streamId: string | null, enabled = true) {
     const scheduleRetry = () => {
       if (disposed) return
       attempt += 1
+      if (attempt > MAX_RETRY_ATTEMPTS) {
+        // Give up - keeps the origin (and the watch-time quota) unharmed.
+        endSession()
+        setState('error')
+        return
+      }
       const delay = Math.min(30000, 2000 * attempt)
       retry = window.setTimeout(() => {
         if (!disposed) begin()
