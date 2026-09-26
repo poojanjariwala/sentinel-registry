@@ -29,6 +29,7 @@ services:
 
   mediagen:
     build: ./infra/mediagen
+    profiles: ["demo"]  # opt-in only: docker compose --profile demo up -d mediagen
     volumes:
       - hls_media:/hls
     restart: unless-stopped
@@ -41,7 +42,6 @@ services:
       - hls_media:/usr/share/nginx/hls:ro
     depends_on:
       - api
-      - mediagen
 
 volumes:
   pgdata:

@@ -23,6 +23,7 @@ def list_streams(
         select(StreamSource, Camera, Department.name)
         .join(Camera, StreamSource.camera_id == Camera.camera_id)
         .join(Department, StreamSource.department_id == Department.department_id)
+        .where(StreamSource.enabled.is_(True))  # disabled feeds never show as live
     )
     flt = user_department_filter(user, db)
     if flt is not None:

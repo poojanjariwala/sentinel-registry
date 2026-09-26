@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     sentinel_api_base: str = ""  # e.g. http://<sandbox-host> for /api/ingest catalogue
     sentinel_hls_base: str = "http://web/hls/cam1"  # local mediagen (compose network)
 
+    # Real Gujarat Police feeds (Sentinel Camera Grid, password-gated HLS origin)
+    grid_base_url: str = ""  # e.g. https://cctv.corp8.cloud
+    grid_email: str = ""
+    grid_password: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

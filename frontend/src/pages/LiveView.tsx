@@ -11,8 +11,22 @@ const GRID_PRESETS = [
   { id: '1+5', label: '1+5', cols: 3, count: 6, icon: Rows3 },
 ]
 
-function Tile({ stream, focused, onFocus }: { stream: StreamRow | null; focused: boolean; onFocus: () => void }) {
-  const { videoRef, state } = useHlsStream(stream?.stream_id ?? null)
+function Tile({
+  stream,
+  startable,
+  focused,
+  onFocus,
+  onStart,
+  onRetry,
+}: {
+  stream: StreamRow | null
+  startable: boolean
+  focused: boolean
+  onFocus: () => void
+  onStart: () => void
+  onRetry: () => void
+}) {
+  const { videoRef, state } = useHlsStream(startable ? stream?.stream_id ?? null : null)
 
   return (
     <div
@@ -24,15 +38,34 @@ function Tile({ stream, focused, onFocus }: { stream: StreamRow | null; focused:
     >
       <div className="relative flex-1 bg-black">
         <video ref={videoRef} muted autoPlay playsInline className="h-full w-full object-contain" />
-        {state !== 'live' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-ink/80 text-xs text-white/80">
-            {state === 'connecting' ? 'Connecting to camera…' : state === 'error' ? 'Feed unavailable · retrying' : 'Idle'}
-          </div>
-        )}
         {state === 'live' && (
           <span className="absolute left-2 top-2 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-2xs font-semibold text-red-400">
             <Radio className="h-3 w-3 animate-pulse" /> LIVE
           </span>
+        )}
+        {state !== 'live' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-ink/80 text-xs text-white/80">
+            {state === 'connecting' ? 'Connecting to camera…'
+              : state === 'cooldown' ? 'Watch-time cooldown · click to retry later'
+              : state === 'error' ? 'Feed unavailable · retries exhausted · click Start to retry'
+              : startable ? 'Starting…'
+              : (
+                <button
+                  className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs text-white/90 ring-1 ring-white/25 hover:bg-white/20"
+                  onClick={(e) => { e.stopPropagation(); onStart() }}
+                >
+                  ▶ Play this camera
+                </button>
+              )}
+          </div>
+        )}
+        {state === 'cooldown' && (
+          <button
+            className="absolute right-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-2xs text-white/80 hover:bg-black/80"
+            onClick={(e) => { e.stopPropagation(); onRetry() }}
+          >
+            ↻ Retry
+          </button>
         )}
       </div>
       {stream && (
@@ -59,7 +92,14 @@ function Tile({ stream, focused, onFocus }: { stream: StreamRow | null; focused:
 export default function LiveView() {
   const { can } = useAuth()
   const [rows, setRows] = useState<StreamRow[]>([])
-  const [preset, setPreset] = useState(GRID_PRESETS[1])
+  // Click-to-start (grid etiquette, ADR-007): the origin enforces a per-account
+  // watch-time quota, so streams open on explicit user action, never all at
+  // once on page load.
+  const [playing, setPlaying] = useState(false)
+  // Individually started tiles (per-tile Play button) - kept separate from the
+  // global Start live flag so one click never opens the whole wall.
+  const [startedIds, setStartedIds] = useState<Set<string>>(new Set())
+  const [preset, setPreset] = useState(GRID_PRESETS[0])
   const [slots, setSlots] = useState<(string | null)[]>(Array(9).fill(null))
   const [focus, setFocus] = useState<string | null>(null)
   const [filters, setFilters] = useState({ q: '', vms_system: '', status: '' })
@@ -139,6 +179,25 @@ export default function LiveView() {
               <option key={s}>{s}</option>
             ))}
           </select>
+          {playing ? (
+            <button
+              onClick={() => {
+                setPlaying(false)
+                setStartedIds(new Set())
+              }}
+              className="flex items-center gap-1 rounded border border-line bg-white px-2.5 py-1.5 text-xs text-ink hover:bg-canvas"
+            >
+              ■ Stop live
+            </button>
+          ) : (
+            <button
+              onClick={() => setPlaying(true)}
+              className="flex items-center gap-1 rounded bg-accent px-2.5 py-1.5 text-xs text-white hover:opacity-90"
+              title="Opens the first tiles; each tile can also be started individually"
+            >
+              ▶ Start live
+            </button>
+          )}
           <div className="flex overflow-hidden rounded border border-line">
             {GRID_PRESETS.map((p) => (
               <button
@@ -168,7 +227,23 @@ export default function LiveView() {
           style={{ gridTemplateColumns: `repeat(${preset.cols}, minmax(0, 1fr))`, gridAutoRows: 'minmax(220px, 1fr)' }}
         >
           {slots.slice(0, preset.count).map((id, i) => (
-            <Tile key={i} stream={id ? byId.get(id) ?? null : null} focused={focus === id} onFocus={() => setFocus(id)} />
+            <Tile
+              key={`${i}-${id ?? 'empty'}`}
+              stream={id ? byId.get(id) ?? null : null}
+              startable={playing || (!!id && startedIds.has(id))}
+              focused={focus === id}
+              onFocus={() => setFocus(id)}
+              onStart={() => id && setStartedIds((s) => new Set(s).add(id))}
+              onRetry={() => {
+                if (!id) return
+                setStartedIds((s) => {
+                  const next = new Set(s)
+                  next.delete(id)
+                  return next
+                })
+                window.setTimeout(() => setStartedIds((s) => new Set(s).add(id)), 100)
+              }}
+            />
           ))}
         </div>
 
