@@ -61,17 +61,31 @@ def ocr_plate_image(img) -> tuple[str, float]:
 
 
 def ocr_plate(image_path: Path) -> tuple[str, float]:
-    """Read a plate from an image file (edge demo scenes).
+    """Read a plate from an image file using YOLO plate detector + Tesseract OCR.
 
-    The demo plate is white-on-dark at a known region (mediagen draws the
-    plate box at x=230..490, y=140..214); crop exactly, then delegate to the
-    general OCR path.
+    Uses YOLO model (anpr-demo-model.pt) to locate plate bounding box,
+    crops it, caches in memory, and runs OCR; falls back to demo region if needed.
     """
     import cv2
 
     img = cv2.imread(str(image_path))
     if img is None:
         return "", 0.0
+
+    try:
+        from app.services.anpr_service import YoloPlateDetector, ocr_plate_crop
+        detector = YoloPlateDetector.get_instance()
+        boxes = detector.detect(img, conf_threshold=0.20)
+        if boxes:
+            x1, y1, x2, y2 = boxes[0]["bbox"]
+            roi = img[y1:y2, x1:x2]
+            if roi.size > 0:
+                norm, raw, conf = ocr_plate_crop(roi)
+                if raw:
+                    return norm or raw, conf
+    except Exception as e:
+        logger.debug("YOLO detector pass in edge_anpr fell back: %s", e)
+
     roi = img[140:214, 230:490]
     if roi.size == 0:
         return "", 0.0

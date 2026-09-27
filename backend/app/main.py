@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.errors import RequestIDMiddleware, install_error_handlers
-from app.api import audit, auth, cameras, coverage, federation, gis, meta, streams, vehicles
+from app.api import anpr, audit, auth, cameras, coverage, federation, gis, meta, streams, vehicles
 
 settings = get_settings()
 
@@ -77,6 +77,7 @@ app.include_router(coverage.router, prefix=API_PREFIX)
 app.include_router(audit.router, prefix=API_PREFIX)
 app.include_router(streams.router, prefix=API_PREFIX)
 app.include_router(vehicles.router, prefix=API_PREFIX)
+app.include_router(anpr.router, prefix=API_PREFIX)
 app.include_router(federation.router, prefix=API_PREFIX)
 
 
