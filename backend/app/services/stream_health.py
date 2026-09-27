@@ -69,6 +69,9 @@ async def probe_all_streams_once() -> dict:
         if sp.protocol in {"HLS", "SIM"}:
             status, latency, detail = await probe_health(sp)
         else:
+            # RTSP (grid inference) sources are health-checked implicitly by
+            # the grid-rtsp engine's own reconnect cycle - probing them here
+            # would open a second client copy per camera (load etiquette).
             status, latency, detail = "UNKNOWN", None, "probe-not-implemented"
         outcomes.append((sp.stream_id, status, latency, detail))
         results["checked"] += 1

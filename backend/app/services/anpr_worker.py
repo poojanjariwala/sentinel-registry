@@ -4,13 +4,15 @@ Dispatcher over pluggable engines - every detection goes through the shared
 pipeline (anpr_pipeline.ingest_observation), never fabricated by the worker:
 
 - edge-ocr  : REAL recognition - ffmpeg frame grab + tesseract OCR on the
-              local mediagen plate scenes (protocol EDGE). Never touches the
-              real Gujarat Police grid (watch-time quota; honesty guard).
+              local mediagen plate scenes (protocol EDGE).
+- grid-rtsp : REAL recognition on the Sentinel Camera Grid via RTSP/TCP
+              (see rtsp_anpr) - the sanctioned AI-inference path; the HLS
+              origin stays viewing-only (watch-time quota etiquette).
 - simulated : legacy random-plate demo, only on protocol-SIM streams; the
               engine label is persisted on every row (PRD §53: an AI
               detection must carry its provenance).
 
-Both loops also sweep stale viewer sessions (existing behaviour kept).
+The loop also sweeps stale viewer sessions (existing behaviour kept).
 """
 
 import asyncio
@@ -22,7 +24,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
-from app.services import edge_anpr
+from app.services import edge_anpr, grid_client, rtsp_anpr
 from app.services.anpr_pipeline import ingest_observation
 from app.services.stream_service import sweep_stale_sessions
 
@@ -137,16 +139,22 @@ async def anpr_loop(stop: asyncio.Event):
             try:
                 edge = _edge_tick(db)
                 sim = _sim_tick(db)
-                if edge["observations"] or sim["observations"]:
-                    logger.info(
-                        "anpr tick: edge=%s sim=%s (obs=%d evt=%d alert=%d)",
-                        edge["observations"], sim["observations"],
-                        edge["observations"] + sim["observations"],
-                        edge["events"] + sim["events"], edge["alerts"] + sim["alerts"],
-                    )
                 sweep_stale_sessions(db)
             finally:
                 db.close()
+            # Grid RTSP runs in a worker thread: decode holds no async loop
+            # hostage, and open captures survive between ticks (paced load).
+            grid = await asyncio.to_thread(rtsp_anpr.grid_rtsp_tick) \
+                if grid_client.rtsp_configured() \
+                else {"observations": 0, "events": 0, "alerts": 0}
+            if edge["observations"] or sim["observations"] or grid["observations"]:
+                logger.info(
+                    "anpr tick: edge=%s sim=%s grid=%s (obs=%d evt=%d alert=%d)",
+                    edge["observations"], sim["observations"], grid["observations"],
+                    edge["observations"] + sim["observations"] + grid["observations"],
+                    edge["events"] + sim["events"] + grid["events"],
+                    edge["alerts"] + sim["alerts"] + grid["alerts"],
+                )
         except Exception:  # pragma: no cover - keep the loop alive
             logger.exception("anpr tick failed")
         try:

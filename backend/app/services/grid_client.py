@@ -10,6 +10,7 @@ signed HLS gateway (ADR-005).
 """
 
 import asyncio
+import re
 import time
 
 import httpx
@@ -61,6 +62,33 @@ def is_grid_url(url: str) -> bool:
 
 def camera_hls_url(grid_id: str) -> str:
     return f"{base_url()}/{grid_id}/index.m3u8"
+
+
+def rtsp_configured() -> bool:
+    """RTSP inference is opt-in via GRID_RTSP_HOST (integrator guide §1)."""
+    return bool((settings.grid_rtsp_host or "").strip())
+
+
+def camera_rtsp_url(grid_id: str) -> str:
+    """rtsp://<email>:<password>@<host>:8554/stream/<id>
+
+    The '@' in the account email must be percent-encoded as %40 (guide §1).
+    The password is embedded per the guide's contract; callers must never log
+    the result - redact_rtsp() exists for that.
+    """
+    from urllib.parse import quote
+
+    host = (settings.grid_rtsp_host or "").strip()
+    email = quote((settings.grid_email or "").strip(), safe="")  # @ -> %40
+    password = quote(settings.grid_password or "", safe="")
+    return f"rtsp://{email}:{password}@{host}:{settings.grid_rtsp_port}/stream/{grid_id}"
+
+
+def redact_rtsp(url: str) -> str:
+    """Strip userinfo from an rtsp URL for logs/DB labels. Greedy so it also
+    covers raw emails whose '@' was not percent-encoded (userinfo itself
+    contains a literal '@' up to the final host separator)."""
+    return re.sub(r"(rtsp://).+@", r"\1***@", url)
 
 
 def in_cooldown() -> bool:

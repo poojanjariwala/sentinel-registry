@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     grid_email: str = ""
     grid_password: str = ""
 
+    # Grid RTSP inference (grid integrator guide §1): RTSP/WHEP bypass the CDN
+    # and the HLS watch-time quota - served on the public IP, creds embedded in
+    # the URL. RTSP is the sanctioned AI-inference path; HLS stays viewing-only.
+    grid_rtsp_host: str = ""  # e.g. 103.250.160.189 (empty -> RTSP inference off)
+    grid_rtsp_port: int = 8554
+    grid_rtsp_max_streams: int = 12  # pace the load: one client copy per camera
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
