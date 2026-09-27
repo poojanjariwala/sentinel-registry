@@ -118,10 +118,14 @@ _PLATE_RE = re.compile(r"[^A-Z0-9]")
 
 
 def normalize_plate(raw: str) -> str:
-    """Uppercase, strip separators/O-swap: GJ-01 AB 1234 -> GJ01AB1234."""
-    up = (raw or "").upper()
-    up = up.replace("O", "0")
-    return _PLATE_RE.sub("", up)
+    """Uppercase, strip separators/O-swap: GJ-01 AB 1234 -> GJ01AB1234.
+
+    Kept as a thin alias of the shared pipeline normalizer (TRD 13 single
+    rule set) so API search and ingestion can never disagree.
+    """
+    from app.services.anpr_pipeline import normalize_plate as _shared
+
+    return _shared(raw)
 
 
 def sweep_stale_sessions(db: Session) -> int:

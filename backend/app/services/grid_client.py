@@ -172,6 +172,36 @@ async def fetch_camera_catalogue() -> list[dict]:
     return [item for item in data if isinstance(item, dict)]
 
 
+async def fetch_camera_catalogue_isolated() -> list[dict]:
+    """Catalogue fetch on a PRIVATE client + loop.
+
+    For callers that run us via asyncio.run() in a worker thread (federation
+    sync): the shared module-level client is bound to the app's event loop
+    and closing it there poisons the running app (RuntimeError: Event loop
+    is closed). Same auth contract, isolated transport.
+    """
+    import httpx as _httpx
+
+    base = base_url()
+    headers = {**_BROWSER_HEADERS, "Referer": base + "/"}
+    async with _httpx.AsyncClient(base_url=base, timeout=15.0, follow_redirects=True, headers=headers) as client:
+        resp = await client.post(
+            _LOGIN_PATH,
+            data={"email": settings.grid_email, "password": settings.grid_password},
+        )
+        if resp.status_code == 403 and any(m in resp.text.lower() for m in _COOLDOWN_MARKERS):
+            raise GridAuthError("grid watch-time quota exhausted", code="GRID_COOLDOWN")
+        if resp.status_code != 200 or len(client.cookies) == 0:
+            raise GridAuthError(f"grid login failed (HTTP {resp.status_code})")
+        resp = await client.get("/cameras.json")
+        if resp.status_code != 200:
+            raise GridAuthError(f"catalogue fetch failed (HTTP {resp.status_code})")
+        data = resp.json()
+        if isinstance(data, dict):
+            data = data.get("cameras") or data.get("items") or []
+        return [item for item in data if isinstance(item, dict)]
+
+
 def grid_unavailable() -> bool:
     """True when login is throttled/quota-drained (live tiles and probes back off)."""
     return in_cooldown()

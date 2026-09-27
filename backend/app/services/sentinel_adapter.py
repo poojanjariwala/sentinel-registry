@@ -164,6 +164,47 @@ def seed_simulated_feeds(db: Session) -> dict:
     return {"created": created, "refreshed": refreshed, "vms_systems": ["GUJCAMS-SIM", "CITYCORE-SIM", "SENTINEL"]}
 
 
+def seed_edge_streams(db: Session) -> dict:
+    """Idempotently create 3 EDGE-ANPR demo streams on the local mediagen
+    plate scenes (cam4..cam6). These are the ONLY streams the real OCR
+    engine runs on - the 30 grid feeds stay viewing-only (quota etiquette).
+    """
+    created = refreshed = 0
+    cams = db.execute(
+        select(Camera).where(Camera.status == "ACTIVE").order_by(Camera.camera_code).limit(3)
+    ).scalars().all()
+    existing = {
+        s.source_url: s
+        for s in db.execute(select(StreamSource).where(StreamSource.vms_system == "EDGE-DEMO")).scalars().all()
+    }
+    for i, cam in enumerate(cams):
+        url = f"http://web/hls/cam{4 + i}/index.m3u8"
+        if url in existing:
+            s = existing[url]
+            if s.status != "ONLINE" or not s.analytics_enabled:
+                # self-heal: local deterministic scenes are always playable
+                s.status = "ONLINE"
+                s.analytics_enabled = True
+                refreshed += 1
+            continue
+        db.add(StreamSource(
+            camera_id=cam.camera_id,
+            label=f"Edge ANPR Lane {i + 1} · {cam.name}",
+            protocol="EDGE",
+            source_url=url,
+            vms_system="EDGE-DEMO",
+            department_id=cam.department_id,
+            is_live=True,
+            enabled=True,
+            status="ONLINE",
+            analytics_enabled=True,
+            last_probe_at=None,
+        ))
+        created += 1
+    db.commit()
+    return {"created": created, "refreshed": refreshed, "vms_system": "EDGE-DEMO"}
+
+
 def seed_watchlist(db: Session, user_id: str) -> int:
     if db.execute(select(WatchlistVehicle).limit(1)).scalar_one_or_none():
         return 0

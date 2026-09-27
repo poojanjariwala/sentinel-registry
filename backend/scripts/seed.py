@@ -19,6 +19,7 @@ from app.models.camera import Camera
 from app.models.department import Department, Site
 from app.models.gap_run import GapAnalysisRun
 from app.models.user import Role, User, UserRole
+from app.services.sentinel_adapter import seed_edge_streams, seed_watchlist
 try:
     from scripts.seed_data import (
         AMC_VENDORS, CONNECTIVITY_MIX, DEMO_PASSWORD, DEPARTMENTS, DISTRICT_WEIGHT,
@@ -241,6 +242,9 @@ def main():
             select(User).where(User.email == "state.admin@sentinel.local")
         ).scalar_one()
         seed_gap_run(db, admin.user_id)
+        n_watch = seed_watchlist(db, admin.user_id)
+        edge = seed_edge_streams(db)
+        print(f"Watchlist: {n_watch} seeded entries · Edge ANPR: +{edge['created']} streams (EDGE-DEMO)")
         total = db.scalar(select(func.count()).select_from(Camera))
         print(f"Seed complete: {len(depts)} departments, {len(sites)} sites, {created} new cameras ({total} total)")
         print("Demo users (development only):")

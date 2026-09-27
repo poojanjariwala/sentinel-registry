@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './index.css'
 import App from './App'
+import Dashboard from './pages/Dashboard'
 import { AuthProvider } from './lib/auth'
 import Login from './pages/Login'
 import MapView from './pages/MapView'
@@ -24,7 +25,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route element={<App />}>
-          <Route path="/" element={<Navigate to="/map" replace />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/map" element={<MapView />} />
           <Route path="/registry" element={<Registry />} />
           <Route path="/registry/:cameraId" element={<CameraDetail />} />

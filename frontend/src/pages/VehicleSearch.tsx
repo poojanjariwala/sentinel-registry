@@ -17,6 +17,12 @@ interface Obs {
   vms_system: string
   camera_name: string
   district: string | null
+  meta: { frame_uri?: string; lane?: string } | null
+}
+interface Movement {
+  from: { at: string; camera: string; district: string | null }
+  to: { at: string; camera: string; district: string | null }
+  gap_seconds: number
 }
 interface Ev {
   event_id: string
@@ -54,6 +60,7 @@ export default function VehicleSearch() {
   const [plate, setPlate] = useState('GJ01AB1234')
   const [hours, setHours] = useState(24)
   const [obs, setObs] = useState<Obs[]>([])
+  const [movements, setMovements] = useState<Movement[]>([])
   const [meta, setMeta] = useState<{ mode: string; total: number } | null>(null)
   const [searching, setSearching] = useState(false)
   const [events, setEvents] = useState<Ev[]>([])
@@ -70,6 +77,12 @@ export default function VehicleSearch() {
       )
       setObs(r.data)
       setMeta(r.meta)
+      // Route reconstruction (TRD Screen 4 / FR-012): chronological
+      // camera-to-camera movement timeline from the same observations.
+      const t = await api.get<{ data: { movements: Movement[] } }>(
+        `/vehicles/${encodeURIComponent(plate)}/timeline?hours=${hours}`,
+      )
+      setMovements(t.data.movements)
     } finally {
       setSearching(false)
     }
@@ -161,6 +174,7 @@ export default function VehicleSearch() {
                 <tr>
                   <th>Time</th>
                   <th>Plate</th>
+                  <th>Evidence</th>
                   <th>Camera</th>
                   <th>District</th>
                   <th>VMS</th>
@@ -174,6 +188,15 @@ export default function VehicleSearch() {
                   <tr key={o.observation_id}>
                     <td className="whitespace-nowrap text-xs">{fmtDateTime(o.captured_at)}</td>
                     <td className="font-mono text-xs font-semibold">{o.plate_normalized}</td>
+                    <td>
+                      {o.meta?.frame_uri ? (
+                        <a href={o.meta.frame_uri} target="_blank" rel="noreferrer">
+                          <img src={o.meta.frame_uri} alt="evidence" className="h-8 w-14 rounded border border-line object-cover" />
+                        </a>
+                      ) : (
+                        <span className="text-2xs text-ink-faint">—</span>
+                      )}
+                    </td>
                     <td className="text-xs">{o.camera_name}</td>
                     <td className="text-xs">{o.district ?? '-'}</td>
                     <td className="text-2xs">{o.vms_system}</td>
@@ -185,6 +208,24 @@ export default function VehicleSearch() {
               </tbody>
             </table>
             {obs.length > 12 && <p className="mt-1 text-2xs text-ink-faint">Showing 12 of {obs.length} results</p>}
+          </div>
+        )}
+
+        {movements.length > 0 && (
+          <div className="mt-3 border-t border-line pt-3">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Route reconstruction</h3>
+            <ol className="space-y-1 text-xs">
+              {movements.map((m, i) => (
+                <li key={i} className="flex flex-wrap items-center gap-2 rounded border border-line px-2.5 py-1.5">
+                  <span className="font-medium">{m.from.camera}</span>
+                  <span className="text-ink-faint">→</span>
+                  <span className="font-medium">{m.to.camera}</span>
+                  <span className="text-2xs text-ink-faint">
+                    gap {m.gap_seconds >= 60 ? `${Math.floor(m.gap_seconds / 60)}m` : `${m.gap_seconds}s`}
+                  </span>
+                </li>
+              ))}
+            </ol>
           </div>
         )}
       </section>

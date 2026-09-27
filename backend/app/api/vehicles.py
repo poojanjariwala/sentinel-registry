@@ -15,8 +15,8 @@ from app.models.module2 import (
 )
 from app.models.user import User
 from app.services import audit as audit_svc
+from app.services.anpr_pipeline import normalize_plate
 from app.services.camera_service import user_department_filter
-from app.services.stream_service import normalize_plate
 
 router = APIRouter(tags=["analytics"])
 
@@ -57,6 +57,8 @@ def vehicle_search(
         stmt = stmt.where(VehicleObservation.plate_normalized.like(f"%{norm[-4:]}%"))
         total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         mode = "partial-last4"
+    else:
+        stmt = exact  # rows must match the counted filter, not the base query
     rows = db.execute(stmt.limit(page_size).offset((page - 1) * page_size)).all()
 
     data = [
@@ -75,7 +77,8 @@ def vehicle_search(
             "camera_name": cname,
             "district": dist,
             "location": [lat, lng] if lat is not None else None,
-            "meta": o.meta,
+            # evidence snapshot (TRD FR-015) served from /hls/anpr/evidence/
+            "meta": {**(o.meta or {}), **({"frame_uri": o.snapshot_hint} if o.snapshot_hint else {})},
         }
         for (o, label, vms, cname, dist, lat, lng) in rows
     ]
@@ -84,6 +87,26 @@ def vehicle_search(
         "meta": {"query": norm, "mode": mode, "page": page, "pageSize": page_size, "total": total},
         "requestId": request_id_var.get(),
     }
+
+
+@router.get("/vehicles/search/meta-engines")
+def observation_engines(
+    hours: int = 24,
+    user: User = Depends(require_perm("camera", "read")),
+    db: Session = Depends(get_db),
+):
+    """ANPR throughput by engine for the dashboard (edge-ocr vs simulated)."""
+    since = datetime.now(timezone.utc) - timedelta(hours=max(1, min(hours, 24 * 7)))
+    stmt = (
+        select(VehicleObservation.engine, func.count().label("total"))
+        .where(VehicleObservation.captured_at >= since)
+        .group_by(VehicleObservation.engine)
+    )
+    flt = user_department_filter(user, db)
+    if flt is not None:
+        stmt = stmt.where(flt)
+    rows = db.execute(stmt).all()
+    return {"data": [{"engine": e, "total": int(t)} for e, t in rows], "meta": {}, "requestId": request_id_var.get()}
 
 
 @router.get("/vehicles/{plate}/timeline")

@@ -41,10 +41,14 @@ class AdapterError(Exception):
 
 
 def _grid_discover(registry_row: VmsSystem) -> list[dict]:
-    """Sentinel Camera Grid adapter: catalogue at /cameras.json."""
+    """Sentinel Camera Grid adapter: catalogue at /cameras.json.
+
+    Uses an isolated client/loop (adapter runs via asyncio.run in worker
+    threads; the shared in-process client is bound to the app's loop).
+    """
     if not grid_client.configured():
         raise AdapterError("GRID_BASE_URL/GRID_EMAIL/GRID_PASSWORD not configured")
-    catalogue = _run(grid_client.fetch_camera_catalogue())
+    catalogue = _run(grid_client.fetch_camera_catalogue_isolated())
     out = []
     for item in catalogue:
         gid = str(item.get("id") or "").strip()
@@ -203,6 +207,14 @@ def discover_vms(db: Session, vms: VmsSystem) -> dict:
     except Exception as e:  # noqa: BLE001 - AC-11: report, never crash
         vms.status = "OFFLINE"
         vms.last_error = f"{type(e).__name__}: {e}"
+        db.commit()
+        return {"vms": vms.name, "ok": False, "reason": vms.last_error}
+    if not cams:
+        # An empty catalogue is a FAILED discovery, not a decision: treating
+        # it as authoritative would disable every stream of this VMS (this
+        # exact foot-gun wiped GP-GRID once during a grid cooldown).
+        vms.status = "OFFLINE"
+        vms.last_error = "discovery returned an empty catalogue; streams left untouched"
         db.commit()
         return {"vms": vms.name, "ok": False, "reason": vms.last_error}
 

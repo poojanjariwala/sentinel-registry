@@ -1,8 +1,9 @@
 import { Outlet, NavLink, Navigate, useNavigate } from 'react-router-dom'
-import { MapPin, Table2, Upload, ScanSearch, ShieldCheck, ScrollText, LogOut, Radar, MonitorPlay, CarFront, Network } from 'lucide-react'
+import { MapPin, Table2, Upload, ScanSearch, ShieldCheck, ScrollText, LogOut, Radar, MonitorPlay, CarFront, Network, LayoutDashboard } from 'lucide-react'
 import { useAuth } from './lib/auth'
 
 const NAV = [
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, perm: 'camera.read' },
   { to: '/live', label: 'Live View', icon: MonitorPlay, perm: 'camera.read' },
   { to: '/federation', label: 'VMS Federation', icon: Network, perm: 'camera.read' },
   { to: '/map', label: 'GIS Map', icon: MapPin, perm: 'camera.read' },

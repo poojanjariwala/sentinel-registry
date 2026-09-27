@@ -22,6 +22,8 @@ services:
       DATABASE_URL: postgresql+psycopg://sentinel:sentinel@db:5432/sentinel_registry
     ports:
       - "18000:8000"
+    volumes:
+      - hls_media:/hls
     depends_on:
       db:
         condition: service_healthy
